@@ -1,0 +1,500 @@
+================================================================================
+  PRODUCT REQUIREMENTS DOCUMENT
+  Project: Checkers Game with AI Microservice
+  Version: 1.0
+  Status: Ready for Agentic Development
+================================================================================
+
+
+────────────────────────────────────────────────────────────────────────────────
+1. PROJECT OVERVIEW
+────────────────────────────────────────────────────────────────────────────────
+
+A full-stack multiplayer checkers game with a dedicated AI microservice.
+Players can compete against each other or against an AI opponent with
+selectable difficulty levels. The system is containerized and designed for
+local and cloud deployment.
+
+
+────────────────────────────────────────────────────────────────────────────────
+2. TECH STACK
+────────────────────────────────────────────────────────────────────────────────
+
+  Frontend / Full-stack framework : TanStack Start (React, file-based routing)
+  Runtime                         : Bun
+  API layer                       : Hono
+  Database                        : MongoDB (via Mongoose)
+  Containerization                : Docker + Docker Compose
+  Language                        : TypeScript throughout
+
+
+────────────────────────────────────────────────────────────────────────────────
+3. REPOSITORY STRUCTURE
+────────────────────────────────────────────────────────────────────────────────
+
+  /
+  ├── apps/
+  │   ├── web/                  TanStack Start frontend + Hono API
+  │   │   ├── app/
+  │   │   │   ├── routes/       File-based routes (TanStack Start)
+  │   │   │   ├── components/   React components
+  │   │   │   ├── lib/          Shared utilities, types, constants
+  │   │   │   └── styles/       Global styles
+  │   │   ├── server/           Hono server entrypoint
+  │   │   └── package.json
+  │   │
+  │   └── ai-service/           Standalone AI microservice
+  │       ├── src/
+  │       │   ├── engine/       Checkers AI logic (negamax, eval, board)
+  │       │   └── index.ts      Hono server entrypoint
+  │       └── package.json
+  │
+  ├── packages/
+  │   └── shared/               Shared TypeScript types and board utilities
+  │       └── src/
+  │           ├── types.ts
+  │           └── board.ts
+  │
+  ├── docker-compose.yml
+  └── .env.example
+
+
+────────────────────────────────────────────────────────────────────────────────
+4. SERVICES (Docker Compose)
+────────────────────────────────────────────────────────────────────────────────
+
+  Service       Port    Description
+  ──────────    ─────   ───────────────────────────────────────────────────────
+  web           3000    TanStack Start app + Hono API
+  ai-service    4000    AI microservice (Hono)
+  mongodb       27017   MongoDB database
+
+  All services communicate over an internal Docker network named "checkers-net".
+  Only web is exposed externally.
+
+
+────────────────────────────────────────────────────────────────────────────────
+5. BOARD REPRESENTATION
+────────────────────────────────────────────────────────────────────────────────
+
+5.1 Board String Format
+  The board is encoded as a flat string of length (board_size * board_size).
+  Characters are read left-to-right, top-to-bottom (row 0, col 0 is top-left).
+
+  Character key:
+    '#'  Dark square, empty (playable)
+    '-'  Light square (not playable, always empty)
+    'r'  Red normal piece
+    'R'  Red king piece
+    'b'  Black normal piece
+    'B'  Black king piece
+
+  Example 8x8 starting board (rows separated by newline for readability only;
+  the actual string has no separators):
+    -r-r-r-r
+    r-r-r-r-
+    -r-r-r-r
+    --------   (8 hyphens = row of light squares variant; see note below)
+    --------
+    b-b-b-b-
+    -b-b-b-b
+    b-b-b-b-
+
+  Note: In standard checkers, only dark squares are used. The string encodes
+  ALL squares including light ones (always '-') so that [row * size + col]
+  index math works directly without coordinate conversion.
+
+5.2 Coordinate System
+  All coordinates are [row, col], zero-indexed from the top-left.
+  Row 0 is the top of the board (red's back rank).
+  Row (board_size - 1) is the bottom (black's back rank).
+
+5.3 Supported Board Sizes
+  Standard: 8x8
+  Extended: 10x10
+  The board_size field controls which is active. All logic must be
+  parameterized by board_size, not hardcoded to 8.
+
+
+────────────────────────────────────────────────────────────────────────────────
+6. AI MICROSERVICE
+────────────────────────────────────────────────────────────────────────────────
+
+6.1 Endpoint
+
+  POST /move
+
+6.2 Request Body (JSON)
+
+  {
+    "team":        string,   // "red" | "black" — the AI's team
+    "board_size":  number,   // 8 or 10
+    "difficulty":  string,   // "easy" | "medium" | "hard"
+    "board":       string    // flat board string, length = board_size^2
+  }
+
+  Validation rules:
+  - team must be "red" or "black"
+  - board_size must be 8 or 10
+  - difficulty must be "easy", "medium", or "hard"
+  - board.length must equal board_size * board_size
+  - board must contain only characters: # - r R b B
+  - the team must have at least one legal move available
+
+6.3 Response Body (JSON) — Success
+
+  {
+    "from":            [row, col],          // origin cell
+    "to":              [row, col],          // destination cell
+    "captures":        [[row, col], ...],   // cells of captured pieces (0 or more)
+    "promotion":       boolean,             // true if move results in a king
+    "resulting_board": string               // board string after the move is applied
+  }
+
+6.4 Response Body (JSON) — Error
+
+  {
+    "error": string   // human-readable error message
+  }
+
+  HTTP status codes:
+    400  Invalid input (validation failure)
+    422  No legal moves available (game over state)
+    500  Internal engine error
+
+6.5 AI Engine — Algorithm
+
+  Algorithm: Negamax with alpha-beta pruning and iterative deepening.
+
+  Difficulty settings:
+    easy   → max_depth: 2,  eval_noise: ±80
+    medium → max_depth: 5,  eval_noise: ±20
+    hard   → max_depth: 9,  eval_noise: 0
+
+  Eval noise: a random integer in [-eval_noise, +eval_noise] added to the
+  final board score before comparison. Applied once per leaf node evaluation.
+  Use a seeded PRNG if reproducibility is needed (seed not exposed via API).
+
+  The engine must be deterministic for a given input when eval_noise is 0.
+
+6.6 AI Engine — Evaluation Function
+
+  Score from the perspective of the AI's team (positive = better for AI).
+  Components (all tunable constants, listed with starting values):
+
+    normal_piece_value  = 100
+    king_piece_value    = 160
+    center_bonus        = 10   // pieces in the center 4x4 (or 6x6 for 10x10)
+    back_rank_bonus     = 15   // pieces on own back rank (prevents easy promotion)
+    mobility_bonus      = 5    // multiplied by number of legal moves available
+    advancement_bonus   = 3    // multiplied by how many rows toward opponent's side
+
+  Final score = (AI material + positional) - (opponent material + positional)
+
+6.7 AI Engine — Move Rules
+
+  Implement standard English draughts rules:
+  - Normal pieces move diagonally forward one square.
+  - Kings move diagonally in any direction one square.
+  - Captures are mandatory (if a capture is available, it must be taken).
+  - Multi-jump captures are mandatory (continue capturing if possible).
+  - A piece reaching the opponent's back rank is promoted to king immediately,
+    even mid-multi-jump sequence (promotion ends the current jump chain).
+  - Red moves from row 0 downward; black moves from the last row upward.
+
+6.8 AI Service — Hono Server
+
+  - Single route: POST /move (described above)
+  - Health check: GET /health → { "status": "ok" }
+  - No authentication required (internal service only)
+  - Request timeout: 10 seconds
+  - CORS: allow only the web service origin (configurable via env var)
+
+
+────────────────────────────────────────────────────────────────────────────────
+7. WEB APPLICATION
+────────────────────────────────────────────────────────────────────────────────
+
+7.1 Pages and Routes
+
+  /                   Home — new game setup / lobby
+  /game/$gameId       Active game board
+  /game/$gameId/end   Post-game results screen
+
+7.2 Home Page
+
+  - "New Game" button opens a modal with:
+      · Board size selector (8x8 / 10x10)
+      · Game mode: Player vs Player | Player vs AI | AI vs AI (spectate)
+      · If AI is involved: difficulty selector (Easy / Medium / Hard)
+      · "Start Game" button → creates game in DB, redirects to /game/$gameId
+
+7.3 Game Board Page
+
+  - Renders the checkers board from the current game state stored in MongoDB.
+  - Board uses SVG pieces as designed (red/black normal and king variants).
+  - Highlights:
+      · Selected piece: yellow border on cell
+      · Legal moves for selected piece: green dot on destination cells
+      · Last move: subtle blue tint on from/to cells
+  - Move flow:
+      1. Player clicks a piece → fetch legal moves → highlight destinations
+      2. Player clicks a destination → POST move to /api/game/$gameId/move
+      3. Board updates, turn switches
+      4. If AI turn: web server calls ai-service POST /move, applies result,
+         saves to DB, returns updated state to client
+  - Game status bar: current turn indicator, piece counts per side, move counter
+  - "Resign" button: ends game, marks winner as opponent
+  - Real-time updates: poll /api/game/$gameId/state every 1.5s during AI turns;
+    use server-sent events if polling proves too slow
+
+7.4 Post-Game Screen
+
+  - Displays winner, total moves, piece counts at end
+  - "Play Again" button (same settings) and "New Game" button (back to home)
+
+7.5 AI vs AI Mode
+
+  - Both sides are controlled by the AI service
+  - Client auto-polls; each AI move has a 500ms minimum display delay
+    so moves are human-readable
+  - User can pause/resume and adjust speed
+
+
+────────────────────────────────────────────────────────────────────────────────
+8. HONO API (web service)
+────────────────────────────────────────────────────────────────────────────────
+
+  Base path: /api
+
+  POST   /api/game                   Create a new game
+  GET    /api/game/:gameId/state      Get current game state
+  POST   /api/game/:gameId/move       Submit a player move
+  POST   /api/game/:gameId/resign     Resign the game
+  GET    /api/game/:gameId/legal      Get legal moves for a given piece
+                                      Query params: row, col
+
+  The web API is responsible for:
+  - Validating that the move comes from the correct player's turn
+  - Calling the AI microservice when it is the AI's turn
+  - Persisting all state changes to MongoDB
+  - Returning the updated game state after every action
+
+
+────────────────────────────────────────────────────────────────────────────────
+9. DATA MODEL (MongoDB / Mongoose)
+────────────────────────────────────────────────────────────────────────────────
+
+  Collection: games
+
+  {
+    _id:           ObjectId
+    board_size:    Number       // 8 or 10
+    mode:          String       // "pvp" | "pva" | "ava"
+    difficulty:    String       // "easy" | "medium" | "hard" | null (pvp)
+    ai_team:       String       // "red" | "black" | null (pvp)
+    board:         String       // current board string
+    turn:          String       // "red" | "black"
+    status:        String       // "active" | "red_wins" | "black_wins" | "draw"
+    move_count:    Number
+    history:       [            // array of all moves in order
+      {
+        from:            [Number, Number]
+        to:              [Number, Number]
+        captures:        [[Number, Number]]
+        promotion:       Boolean
+        board_after:     String
+        timestamp:       Date
+      }
+    ]
+    created_at:    Date
+    updated_at:    Date
+  }
+
+
+────────────────────────────────────────────────────────────────────────────────
+10. ENVIRONMENT VARIABLES
+────────────────────────────────────────────────────────────────────────────────
+
+  Web service (.env):
+    PORT=3000
+    MONGODB_URI=mongodb://mongodb:27017/checkers
+    AI_SERVICE_URL=http://ai-service:4000
+    AI_REQUEST_TIMEOUT_MS=10000
+
+  AI service (.env):
+    PORT=4000
+    ALLOWED_ORIGIN=http://web:3000
+
+  MongoDB:
+    MONGO_INITDB_DATABASE=checkers
+
+
+────────────────────────────────────────────────────────────────────────────────
+11. DOCKER COMPOSE SPECIFICATION
+────────────────────────────────────────────────────────────────────────────────
+
+  version: "3.9"
+
+  services:
+
+    web:
+      build: ./apps/web
+      ports: ["3000:3000"]
+      environment: (from .env)
+      depends_on: [mongodb, ai-service]
+      networks: [checkers-net]
+      restart: unless-stopped
+
+    ai-service:
+      build: ./apps/ai-service
+      ports: []                   // not exposed externally
+      environment: (from .env)
+      networks: [checkers-net]
+      restart: unless-stopped
+
+    mongodb:
+      image: mongo:7
+      volumes: [mongo_data:/data/db]
+      networks: [checkers-net]
+      restart: unless-stopped
+
+  volumes:
+    mongo_data:
+
+  networks:
+    checkers-net:
+      driver: bridge
+
+
+────────────────────────────────────────────────────────────────────────────────
+12. SHARED PACKAGE — board.ts
+────────────────────────────────────────────────────────────────────────────────
+
+  The shared package must export the following pure utility functions
+  (used by both the web service and the AI service):
+
+    parseBoardString(board: string, size: number): Cell[][]
+      Converts a flat board string to a 2D array of Cell objects.
+
+    serializeBoardString(cells: Cell[][], size: number): string
+      Converts a 2D Cell array back to the flat board string.
+
+    getLegalMoves(board: Cell[][], size: number, team: Team): Move[]
+      Returns all legal moves for a team. If any captures are available,
+      returns only capture moves (mandatory capture rule).
+
+    applyMove(board: Cell[][], move: Move, size: number): Cell[][]
+      Returns a new board state after applying the move. Does not mutate input.
+
+    isGameOver(board: Cell[][], size: number): GameOverResult | null
+      Returns null if game is still active, or { winner: Team | "draw" }.
+
+  Types:
+    type Team = "red" | "black"
+    type PieceType = "normal" | "king"
+    type Cell = { piece: { team: Team; type: PieceType } | null }
+    type Move = {
+      from: [number, number]
+      to: [number, number]
+      captures: [number, number][]
+      promotion: boolean
+    }
+    type GameOverResult = { winner: Team | "draw" }
+
+
+────────────────────────────────────────────────────────────────────────────────
+13. IMPLEMENTATION ORDER (for agentic execution)
+────────────────────────────────────────────────────────────────────────────────
+
+  Execute phases in order. Each phase must pass its tests before proceeding.
+
+  Phase 1 — Shared package
+    1a. Define all types in packages/shared/src/types.ts
+    1b. Implement board utilities in packages/shared/src/board.ts
+    1c. Write unit tests for all board utility functions
+        - parseBoardString / serializeBoardString round-trip
+        - getLegalMoves on known board positions (normal moves, captures,
+          multi-jump, mandatory capture enforcement)
+        - applyMove correctness including promotion
+        - isGameOver detection
+
+  Phase 2 — AI microservice
+    2a. Scaffold Hono server in apps/ai-service/src/index.ts
+    2b. Implement negamax engine in apps/ai-service/src/engine/
+        - board.ts  : board representation and move generation (reuse shared)
+        - eval.ts   : evaluation function with all components
+        - search.ts : negamax + alpha-beta + iterative deepening
+        - noise.ts  : eval noise utility
+    2c. Wire POST /move and GET /health routes
+    2d. Write integration tests for the /move endpoint
+        - Returns valid move for standard opening position
+        - Returns 400 for invalid board string
+        - Returns 422 when no moves available
+        - Hard difficulty is stronger than easy over N random positions
+    2e. Write Dockerfile for ai-service (Bun base image)
+
+  Phase 3 — MongoDB setup
+    3a. Write Mongoose schema and model for Game collection
+    3b. Write and test all DB access functions (create, read, update)
+
+  Phase 4 — Web API
+    4a. Scaffold Hono API routes under apps/web/server/
+    4b. Implement POST /api/game
+    4c. Implement GET /api/game/:gameId/state
+    4d. Implement GET /api/game/:gameId/legal
+    4e. Implement POST /api/game/:gameId/move
+        - Validate it is the correct player's turn
+        - If AI turn follows: call ai-service, apply response, save
+    4f. Implement POST /api/game/:gameId/resign
+    4g. Integration tests for all API routes
+
+  Phase 5 — Frontend
+    5a. Implement home page with new game modal
+    5b. Implement board component with SVG pieces (red/black, normal/king)
+    5c. Implement move selection UX (click piece → highlights → click target)
+    5d. Implement game page with status bar and resign button
+    5e. Implement AI-vs-AI spectator mode with auto-play loop
+    5f. Implement post-game results page
+
+  Phase 6 — Docker integration
+    6a. Write Dockerfile for web service
+    6b. Write docker-compose.yml with all three services
+    6c. Smoke test: docker compose up → play a full game end-to-end
+
+  Phase 7 — Polish
+    7a. Loading states and error boundaries on all async operations
+    7b. Responsive layout (desktop-first, usable on tablet)
+    7c. Move animation (CSS transition on piece position change)
+    7d. README.md with setup, run, and test instructions
+
+
+────────────────────────────────────────────────────────────────────────────────
+14. ACCEPTANCE CRITERIA
+────────────────────────────────────────────────────────────────────────────────
+
+  - All unit and integration tests pass
+  - docker compose up starts all services with no manual steps
+  - A full PvP game can be played to completion via the browser
+  - A full PvA game (all three difficulties) can be played to completion
+  - AI always returns a move within 10 seconds on hard difficulty (8x8)
+  - The board string returned in AI response always matches the move applied
+  - No TypeScript type errors at build time
+  - All API endpoints return correct HTTP status codes for error cases
+
+
+────────────────────────────────────────────────────────────────────────────────
+15. OUT OF SCOPE (v1.0)
+────────────────────────────────────────────────────────────────────────────────
+
+  - User accounts and authentication
+  - Online multiplayer (networked PvP)
+  - Leaderboards or game history UI
+  - 10x10 international draughts rule variants (flying kings, etc.)
+  - Endgame tablebases (Chinook databases)
+  - Mobile native apps
+
+
+================================================================================
+  END OF DOCUMENT
+================================================================================
