@@ -206,9 +206,11 @@ function getLegalMovesFromPiece(
               );
 
               // Issue 1 fix: Propagate promotion flag to continuation moves
-              if (cont.length > 0 && willPromote) {
+              // Issue fix: Always use continuation moves when available, with correct from
+              if (cont.length > 0) {
                 for (const m of cont) {
-                  m.promotion = true;
+                  m.from = [row, col] as [number, number];
+                  if (willPromote) m.promotion = true;
                 }
                 moves.push(...cont);
               } else {
@@ -271,9 +273,11 @@ function getLegalMovesFromPiece(
             );
 
             // Issue 1 fix: Propagate promotion flag to continuation moves
-            if (cont.length > 0 && willPromote) {
+            // Issue fix: Always use continuation moves when available, with correct from
+            if (cont.length > 0) {
               for (const m of cont) {
-                m.promotion = true;
+                m.from = [row, col] as [number, number];
+                if (willPromote) m.promotion = true;
               }
               moves.push(...cont);
             } else {
