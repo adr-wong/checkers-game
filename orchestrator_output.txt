@@ -1,0 +1,38 @@
+## Orchestrator Session Summary
+
+### Phase 1-patch Complete: RuleSet Modularity
+
+### Tasks Completed
+- [x] Step 1: Create `packages/shared/src/ruleset.ts` - RuleSet type, 5 presets, helper functions
+- [x] Step 2: Modify `packages/shared/src/types.ts` - Added `ruleset: RuleSet` to Move type
+- [x] Step 3: Modify `packages/shared/src/board.ts` - All functions accept RuleSet, flying king + backward capture implemented
+- [x] Step 4: Modify `packages/shared/src/index.ts` - Exports ruleset.ts and isDarkSquare
+- [x] Step 5: Unit tests updated - 35 tests pass with ruleset-aware API
+
+### Files Changed (Phase 1-patch)
+- `packages/shared/src/ruleset.ts` - NEW: RuleSet type, CustomLayout type, 5 presets (ENGLISH, INTERNATIONAL, BRAZILIAN, RUSSIAN, POOL), helper functions (getPromotionRow, isDarkSquare, inBounds, buildStandardLayout, validateRuleSet)
+- `packages/shared/src/types.ts` - Added `ruleset: RuleSet` field to Move type with JSDoc
+- `packages/shared/src/board.ts` - All functions now accept RuleSet parameter, implemented flying king sliding logic, fixed backward capture direction bug, mid-jump promotion propagation, move ruleset validation in applyMove
+- `packages/shared/src/index.ts` - Added `export * from './ruleset'` and renamed isPlayableSquare to isDarkSquare
+- `packages/shared/__tests__/board.test.ts` - Updated all tests to pass RuleSet explicitly, added ruleset-specific tests
+
+### Key Implementation Details
+- **Flying King**: Implemented sliding movement along diagonals (kingMoveDistance: 'flying')
+- **Backward Capture**: Fixed to use captureDirections for all capture attempts when captureBackward: true
+- **Mid-jump Promotion**: Continuation moves now correctly carry promotion flag
+- **Ruleset Validation**: applyMove validates move.ruleset matches passed ruleset
+
+### Current State
+- All 35 tests pass
+- TypeScript compiles cleanly
+- No `any` types used
+- Functions are pure with immutable returns
+
+### Next Recommended Steps
+- [ ] Phase 2: AI Microservice - Ruleset-aware negamax engine (requires `apps/ai-service/` to exist)
+- [ ] Phase 3: MongoDB Setup - Schema with ruleset field (requires `apps/web/` to exist)
+- [ ] Phase 4: API Routes - Accept ruleset in POST /move
+- [ ] Phase 5a: Frontend - Preset picker UI
+- [ ] board-debugger.html - Add RuleSet selector panel
+
+### Branch: phase-1-patch

@@ -1,0 +1,466 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Checkers Board Debugger</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: -apple-system, BlinkMacSystem sans-serif; padding: 1rem; background: #f5f5f5; }
+    .container { display: flex; gap: 1rem; flex-wrap: wrap; }
+    .panel { background: white; border-radius: 8px; padding: 1rem; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+    .left { flex: 1; min-width: 280px; max-width: 320px; }
+    .center { flex: 1; min-width: 320px; }
+    .right { flex: 1; min-width: 280px; max-width: 320px; }
+    textarea { width: 100%; height: 120px; font-family: monospace; padding: 0.5rem; }
+    input, button { padding: 0.5rem; margin: 0.25rem 0; width: 100%; }
+    .board { display: grid; grid-template-columns: repeat(8, 1fr); gap: 2px; margin: 1rem 0; }
+    .cell { width: 50px; height: 50px; display: flex; align-items: center; justify-content: center; position: relative; font-size: 10px; }
+    .dark { background: #4a752c; }
+    .light { background: #e8d8b0; }
+    .piece { width: 36px; height: 36px; border-radius: 50%; cursor: pointer; }
+    .red-piece { background: crimson; border: 2px solid #ffb6c1; }
+    .black-piece { background: #2a2a2a; border: 2px solid #888; }
+    .red-king { background: crimson; border: 2px solid gold; display: flex; align-items: center; justify-content: center; }
+    .black-king { background: #2a2a2a; border: 2px solid gold; display: flex; align-items: center; justify-content: center; }
+    .selected { outline: 3px solid yellow; outline-offset: 3px; }
+    .no-move { outline: 3px solid red; outline-offset: 3px; }
+    .dot { width: 12px; height: 12px; background: green; border-radius: 50%; cursor: pointer; }
+    .log-entry { font-size: 12px; padding: 0.5rem; border-bottom: 1px solid #eee; }
+    .status { margin: 0.5rem 0; padding: 0.5rem; background: #f0f0f0; border-radius: 4px; font-size: 14px; }
+    .warning-banner { background: #fff3cd; color: #856404; padding: 1rem; margin-bottom: 1rem; border-radius: 4px; display: none; }
+    .test-position-btn { font-size: 12px; padding: 0.4rem; margin: 0.25rem; width: auto; display: inline-block; }
+  </style>
+</head>
+<body>
+  <div class="warning-banner" id="warningBanner"></div>
+  
+  <h1>Checkers Board Debugger</h1>
+  
+  <div class="container">
+    <div class="panel left">
+      <h3>Board Input</h3>
+      <textarea id="boardInput">-r-r-r-rr-r-r-r--r-r-r-r----------------b-b-b-b--b-b-b-bb-b-b-b-</textarea>
+      <label>Board size: <input type="number" id="boardSize" value="8" min="8" max="10"></label>
+      <div>
+        <label><input type="radio" name="team" value="red" checked> Red</label>
+        <label><input type="radio" name="team" value="black"> Black</label>
+      </div>
+      <button onclick="loadBoard()">Load Board</button>
+      
+      <h4>Character Key</h4>
+      <div style="font-size: 12px; background: #f9f9f9; padding: 0.5rem; border-radius: 4px;">
+        <code>#</code> dark square (empty)<br>
+        <code>-</code> light square (not playable)<br>
+        <code>r</code> red normal <code>R</code> red king<br>
+        <code>b</code> black normal <code>B</code> black king
+      </div>
+      
+      <h4>Test Positions</h4>
+      <button class="test-position-btn" onclick="loadOpening()">Opening 8x8</button>
+      <button class="test-position-btn" onclick="loadSingleCapture()">Single Capture</button>
+      <button class="test-position-btn" onclick="loadMultiJump()">Multi-Jump</button>
+      <button class="test-position-btn" onclick="loadPromotion()">Promotion</button>
+      <button class="test-position-btn" onclick="loadKingMoves()">King Moves</button>
+      <button class="test-position-btn" onclick="loadNoMoves()">No Moves</button>
+    </div>
+    
+    <div class="panel center">
+      <h3>Board Visualization</h3>
+      <div id="boardStatus" class="status"></div>
+      <div id="board" class="board"></div>
+      <button onclick="resetBoard()">Reset Board</button>
+      <button onclick="clearLog()">Clear Log</button>
+    </div>
+    
+    <div class="panel right">
+      <h3>Move Log</h3>
+      <div id="moveLog" style="max-height: 400px; overflow-y: auto;"></div>
+      <button onclick="copyBoardString()">Copy Board String</button>
+    </div>
+  </div>
+
+  <script>
+    // Types (vanilla JS - no enforcement)
+    
+    // Constants
+    const CHAR_TO_TEAM = { r: 'red', R: 'red', b: 'black', B: 'black' };
+    const CHAR_TO_TYPE = { r: 'normal', R: 'king', b: 'normal', B: 'king' };
+    
+    // Helper functions
+    function isPlayableSquare(row, col) {
+      return (row + col) % 2 !== 0;
+    }
+    
+    function parseBoardString(board, size) {
+      if (board.length !== size * size) {
+        throw new Error(`Board length ${board.length} != ${size * size}`);
+      }
+      const cells = [];
+      for (let row = 0; row < size; row++) {
+        cells[row] = [];
+        for (let col = 0; col < size; col++) {
+          const char = board[row * size + col];
+          if (char === '-' || char === '#') {
+            cells[row][col] = { piece: null };
+          } else if (char in CHAR_TO_TEAM) {
+            cells[row][col] = { piece: { team: CHAR_TO_TEAM[char], type: CHAR_TO_TYPE[char] } };
+          } else {
+            throw new Error('Invalid char: ' + char);
+          }
+        }
+      }
+      return cells;
+    }
+    
+    function serializeBoardString(cells, size) {
+      let result = '';
+      for (let row = 0; row < size; row++) {
+        for (let col = 0; col < size; col++) {
+          const cell = cells[row][col];
+          if (cell.piece === null) {
+            result += isPlayableSquare(row, col) ? '#' : '-';
+          } else {
+            const p = cell.piece;
+            result += p.team === 'red' ? (p.type === 'normal' ? 'r' : 'R') : (p.type === 'normal' ? 'b' : 'B');
+          }
+        }
+      }
+      return result;
+    }
+    
+    function copyBoard(board) {
+      return board.map(row => row.map(cell => ({ piece: cell.piece ? { ...cell.piece } : null })));
+    }
+    
+    function getLegalMovesFromPiece(board, size, team, row, col, accumulatedCaptures = []) {
+      const piece = board[row][col].piece;
+      if (!piece || piece.team !== team) return [];
+      
+      const isKing = piece.type === 'king';
+      const direction = team === 'red' ? 1 : -1;
+      const backRank = team === 'red' ? size - 1 : 0;
+      
+      const dirs = isKing 
+        ? [[1, 1], [1, -1], [-1, -1], [-1, 1]] 
+        : [[direction, 1], [direction, -1]];
+      
+      const moves = [];
+      
+      for (const [dRow, dCol] of dirs) {
+        const oneStepRow = row + dRow;
+        const oneStepCol = col + dCol;
+        const capRow = row + dRow * 2;
+        const capCol = col + dCol * 2;
+        
+        if (capRow >= 0 && capRow < size && capCol >= 0 && capCol < size &&
+            oneStepRow >= 0 && oneStepRow < size && oneStepCol >= 0 && oneStepCol < size) {
+          
+          const capPiece = board[oneStepRow][oneStepCol].piece;
+          const destCell = board[capRow][capCol];
+          
+          if (capPiece && capPiece.team !== team && !destCell.piece && isPlayableSquare(capRow, capCol)) {
+            const newCaptures = [...accumulatedCaptures, [oneStepRow, oneStepCol]];
+            const willPromote = !isKing && capRow === backRank;
+            
+            if (willPromote) {
+              moves.push({ from: [row, col], to: [capRow, capCol], captures: newCaptures, promotion: true });
+            } else {
+              const boardAfter = copyBoard(board);
+              boardAfter[capRow][capCol].piece = boardAfter[row][col].piece;
+              boardAfter[row][col].piece = null;
+              boardAfter[oneStepRow][oneStepCol].piece = null;
+              
+              const cont = getLegalMovesFromPiece(boardAfter, size, team, capRow, capCol, newCaptures);
+              if (cont.length > 0) moves.push(...cont);
+              else moves.push({ from: [row, col], to: [capRow, capCol], captures: newCaptures, promotion: false });
+            }
+          }
+        }
+        
+        if (accumulatedCaptures.length === 0 && oneStepRow >= 0 && oneStepRow < size && oneStepCol >= 0 && oneStepCol < size) {
+          if (isPlayableSquare(oneStepRow, oneStepCol) && !board[oneStepRow][oneStepCol].piece) {
+            moves.push({ from: [row, col], to: [oneStepRow, oneStepCol], captures: [], promotion: false });
+          }
+        }
+      }
+      return moves;
+    }
+    
+    function getLegalMoves(board, size, team) {
+      const all = [];
+      for (let r = 0; r < size; r++) {
+        for (let c = 0; c < size; c++) {
+          if (board[r][c].piece?.team === team) {
+            all.push(...getLegalMovesFromPiece(board, size, team, r, c));
+          }
+        }
+      }
+      const captures = all.filter(m => m.captures.length > 0);
+      return captures.length > 0 ? captures : all;
+    }
+    
+    function applyMove(board, move, size) {
+      const newBoard = copyBoard(board);
+      const [fr, fc] = move.from;
+      const [tr, tc] = move.to;
+      newBoard[tr][tc].piece = { ...newBoard[fr][fc].piece };
+      newBoard[fr][fc].piece = null;
+      for (const [cr, cc] of move.captures) {
+        newBoard[cr][cc].piece = null;
+      }
+      if (move.promotion) {
+        newBoard[tr][tc].piece.type = 'king';
+      }
+      return newBoard;
+    }
+    
+    function isGameOver(board, size) {
+      let red = 0, black = 0;
+      for (let r = 0; r < size; r++) {
+        for (let c = 0; c < size; c++) {
+          if (board[r][c].piece) {
+            board[r][c].piece.team === 'red' ? red++ : black++;
+          }
+        }
+      }
+      if (red === 0) return { winner: 'black' };
+      if (black === 0) return { winner: 'red' };
+      const rm = getLegalMoves(board, size, 'red');
+      const bm = getLegalMoves(board, size, 'black');
+      if (rm.length === 0 && bm.length === 0) return { winner: 'draw' };
+      return null;
+    }
+    
+    function describeMove(move, before, after, size) {
+      const fromPiece = before[move.from[0]][move.from[1]].piece;
+      const team = fromPiece.team;
+      const pieceType = fromPiece.type === 'king' ? 'king' : 'normal';
+      const toPiece = after[move.to[0]][move.to[1]].piece;
+      const promotionStr = move.promotion ? ' promoted to king' : '';
+      
+      if (move.captures.length === 0) {
+        return `${team} ${pieceType} at [${move.from[0]},${move.from[1]}] moves to [${move.to[0]},${move.to[1]}]`;
+      }
+      
+      const captureStr = move.captures.map(([r, c]) => {
+        const cap = before[r][c].piece;
+        return `${cap.team} ${cap.type === 'king' ? 'king' : 'normal'}`;
+      }).join(', ');
+      
+      return `${team} ${pieceType} at [${move.from[0]},${move.from[1]}] captures ${captureStr}, lands at [${move.to[0]},${move.to[1]}]${promotionStr}`;
+    }
+    
+    // UI State
+    let currentBoard = [];
+    let currentSize = 8;
+    let activeTeam = 'red';
+    let moveHistory = [];
+    let originalBoardStr = '';
+    
+    // Render
+    function renderBoard() {
+      const boardEl = document.getElementById('board');
+      boardEl.innerHTML = '';
+      boardEl.style.gridTemplateColumns = `repeat(${currentSize}, 1fr)`;
+      
+      for (let r = 0; r < currentSize; r++) {
+        for (let c = 0; c < currentSize; c++) {
+          const cell = document.createElement('div');
+          cell.className = 'cell ' + (isPlayableSquare(r, c) ? 'dark' : 'light');
+          cell.dataset.row = r;
+          cell.dataset.col = c;
+          
+          const coord = document.createElement('span');
+          coord.style.cssText = 'position: absolute; top: 2px; left: 2px; color: rgba(255,255,255,0.5); font-size: 8px;';
+          coord.textContent = `[${r},${c}]`;
+          cell.appendChild(coord);
+          
+          const piece = currentBoard[r][c].piece;
+          if (piece) {
+            const pieceEl = document.createElement('div');
+            pieceEl.className = piece.team === 'red' 
+              ? (piece.type === 'king' ? 'piece red-king' : 'piece red-piece')
+              : (piece.type === 'king' ? 'piece black-king' : 'piece black-piece');
+            if (piece.type === 'king') {
+              pieceEl.innerHTML = '<span style="color: gold; font-size: 20px;">♛</span>';
+            }
+            pieceEl.onclick = () => selectPiece(r, c);
+            cell.appendChild(pieceEl);
+          }
+          boardEl.appendChild(cell);
+        }
+      }
+      updateStatus();
+    }
+    
+    function selectPiece(row, col) {
+      const piece = currentBoard[row][col].piece;
+      if (!piece || piece.team !== activeTeam) {
+        clearSelection();
+        return;
+      }
+      clearHighlights();
+      const cell = document.querySelector(`.cell[data-row="${row}"][data-col="${col}"]`);
+      cell.classList.add('selected');
+      
+      const moves = getLegalMoves(currentBoard, currentSize, activeTeam).filter(m => m.from[0] === row && m.from[1] === col);
+      if (moves.length === 0) {
+        cell.classList.add('no-move');
+        return;
+      }
+      
+      moves.forEach(move => {
+        const dest = document.querySelector(`.cell[data-row="${move.to[0]}"][data-col="${move.to[1]}"]`);
+        if (dest) {
+          const dot = document.createElement('div');
+          dot.className = 'dot';
+          dot.onclick = (e) => { e.stopPropagation(); makeMove(move); };
+          dest.appendChild(dot);
+        }
+      });
+    }
+    
+    function clearHighlights() {
+      document.querySelectorAll('.selected, .no-move, .dot').forEach(el => {
+        el.classList.remove('selected', 'no-move');
+        el.querySelectorAll('.dot').forEach(dot => dot.remove());
+      });
+    }
+    
+    function clearSelection() {
+      clearHighlights();
+    }
+    
+    function makeMove(move) {
+      const before = currentBoard;
+      currentBoard = applyMove(currentBoard, move, currentSize);
+      const after = currentBoard;
+      
+      moveHistory.push({
+        move,
+        boardBefore: serializeBoardString(before, currentSize),
+        boardAfter: serializeBoardString(after, currentSize),
+        timestamp: new Date().toISOString()
+      });
+      
+      clearSelection();
+      renderBoard();
+    }
+    
+    function updateStatus() {
+      let redN = 0, redK = 0, blackN = 0, blackK = 0;
+      for (let r = 0; r < currentSize; r++) {
+        for (let c = 0; c < currentSize; c++) {
+          const p = currentBoard[r][c].piece;
+          if (p) {
+            if (p.team === 'red') p.type === 'king' ? redK++ : redN++;
+            else p.type === 'king' ? blackK++ : blackN++;
+          }
+        }
+      }
+      const moves = getLegalMoves(currentBoard, currentSize, activeTeam);
+      const over = isGameOver(currentBoard, currentSize);
+      
+      let status = `Team: ${activeTeam.toUpperCase()} | Red: ${redN + redK} (n:${redN},k:${redK}) | Black: ${blackN + blackK} (n:${blackN},k:${blackK})<br>Moves: ${moves.length}`;
+      if (over) {
+        status += `<br><strong style="color: ${over.winner === 'red' ? 'crimson' : over.winner === 'black' ? '#2a2a2a' : 'gray'}">${over.winner.toUpperCase().replace('_', ' ')}</strong>`;
+      }
+      document.getElementById('boardStatus').innerHTML = status;
+      updateLog();
+    }
+    
+    function updateLog() {
+      const logEl = document.getElementById('moveLog');
+      logEl.innerHTML = moveHistory.map((h, i) => `
+        <div class="log-entry">
+          <strong>Move #${i + 1}</strong> ${h.timestamp.split('T')[1].slice(0,5)}<br>
+          ${describeMove(h.move, parseBoardString(h.boardBefore, currentSize), parseBoardString(h.boardAfter, currentSize), currentSize)}<br>
+          <details><summary>Board state</summary>${h.boardBefore} → ${h.boardAfter}</details>
+        </div>
+      `).join('');
+    }
+    
+    function copyBoardString() {
+      navigator.clipboard.writeText(serializeBoardString(currentBoard, currentSize));
+    }
+    
+    function clearLog() {
+      moveHistory = [];
+      updateLog();
+    }
+    
+    function resetBoard() {
+      currentBoard = parseBoardString(originalBoardStr, currentSize);
+      moveHistory = [];
+      activeTeam = 'red';
+      loadTeamRadio();
+      renderBoard();
+    }
+    
+    function loadTeamRadio() {
+      document.querySelector('input[name="team"]:checked').value === 'red' ? activeTeam = 'red' : activeTeam = 'black';
+    }
+    
+    function loadBoard() {
+      const str = document.getElementById('boardInput').value.replace(/[^#\-rRbB]/g, '');
+      currentSize = parseInt(document.getElementById('boardSize').value) || 8;
+      if (str.length !== currentSize * currentSize) {
+        alert(`Board string must be ${currentSize * currentSize} characters`);
+        return;
+      }
+      originalBoardStr = str;
+      currentBoard = parseBoardString(str, currentSize);
+      moveHistory = [];
+      loadTeamRadio();
+      renderBoard();
+    }
+    
+    // Test positions
+    function loadOpening() {
+      document.getElementById('boardInput').value = '-r-r-r-rr-r-r-r--r-r-r-r----------------b-b-b-b--b-b-b-bb-b-b-b-';
+      document.getElementById('boardSize').value = '8';
+      document.querySelector('input[value="red"]').checked = true;
+      loadBoard();
+    }
+    
+    function loadSingleCapture() {
+      document.getElementById('boardInput').value = '-------------------r--------b--------#--------------------------';
+      document.getElementById('boardSize').value = '8';
+      document.querySelector('input[value="red"]').checked = true;
+      loadBoard();
+    }
+    
+    function loadMultiJump() {
+      document.getElementById('boardInput').value = '-----------------r--------b--------#--------b--------#----------';
+      document.getElementById('boardSize').value = '8';
+      document.querySelector('input[value="red"]').checked = true;
+      loadBoard();
+    }
+    
+    function loadPromotion() {
+      document.getElementById('boardInput').value = '------------------------------------------r--------b--------#---';
+      document.getElementById('boardSize').value = '8';
+      document.querySelector('input[value="red"]').checked = true;
+      loadBoard();
+    }
+    
+    function loadKingMoves() {
+      document.getElementById('boardInput').value = '------------------------------------R---------------------------';
+      document.getElementById('boardSize').value = '8';
+      document.querySelector('input[value="red"]').checked = true;
+      loadBoard();
+    }
+    
+    function loadNoMoves() {
+      document.getElementById('boardInput').value = 'b---------------------------------------------------------------';
+      document.getElementById('boardSize').value = '8';
+      document.querySelector('input[value="red"]').checked = true;
+      loadBoard();
+    }
+    
+    // Init
+    loadOpening();
+  </script>
+</body>
+</html>

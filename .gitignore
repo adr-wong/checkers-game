@@ -1,0 +1,30 @@
+# Dependencies
+node_modules/
+
+# Build outputs
+packages/*/dist/
+apps/*/*/dist/
+**/.tsbuildinfo
+
+# Environment
+.env
+.env.local
+*.env
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Coverage
+coverage/
+.nyc_output/
+
+# Logs
+*.log
+bun.lockb.tmp
