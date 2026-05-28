@@ -1,0 +1,18 @@
+{
+  "name": "@checkers/ai-service",
+  "type": "module",
+  "version": "1.0.0",
+  "scripts": {
+    "test": "bun test tests/",
+    "test:watch": "bun test --watch tests/"
+  },
+  "dependencies": {
+    "@checkers/shared": "workspace:*",
+    "hono": "^4.0.0"
+  },
+  "devDependencies": {
+    "@types/bun": "latest",
+    "bun-types": "latest",
+    "typescript": "^5.0.0"
+  }
+}
