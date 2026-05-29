@@ -3,11 +3,13 @@
   "private": true,
   "workspaces": [
     "packages/shared",
-    "apps/ai-service"
+    "apps/ai-service",
+    "apps/web"
   ],
   "scripts": {
     "test": "bun test",
     "test:shared": "bun test --cwd packages/shared",
     "test:ai": "bun test --cwd apps/ai-service"
-  }
+  },
+  "dependencies": {}
 }
