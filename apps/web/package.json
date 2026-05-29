@@ -1,0 +1,19 @@
+{
+  "name": "web",
+  "module": "index.ts",
+  "type": "module",
+  "private": true,
+  "dependencies": {
+    "@checkers/shared": "workspace:*",
+    "@types/mongodb-memory-server": "^2.3.0",
+    "hono": "^4.12.23",
+    "mongodb-memory-server": "^11.2.0",
+    "mongoose": "^9.6.3"
+  },
+  "devDependencies": {
+    "@types/bun": "latest"
+  },
+  "peerDependencies": {
+    "typescript": "^5"
+  }
+}
