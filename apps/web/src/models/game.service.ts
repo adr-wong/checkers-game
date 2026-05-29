@@ -1,10 +1,20 @@
 import { Game, IGame } from './game.model';
 import { validateRuleSet, type RuleSet, type Move } from '@checkers/shared';
 
-// Strip ruleset field from move before storing in history
-export function stripRulesetFromMove(move: Move): Omit<Move, 'ruleset'> {
-  const { ruleset: _, ...moveToStore } = move;
-  return moveToStore;
+// History entry type - Move without ruleset field
+export type HistoryEntry = Omit<Move, 'ruleset'> & {
+  board_after: string;
+  timestamp: Date;
+};
+
+// Convert Move to HistoryEntry by stripping ruleset and adding metadata
+export function moveToHistoryEntry(move: Move, boardAfter: string): HistoryEntry {
+  const { ruleset: _, ...moveData } = move;
+  return {
+    ...moveData,
+    board_after: boardAfter,
+    timestamp: new Date()
+  };
 }
 
 // Create a new game
@@ -55,25 +65,36 @@ export async function updateGame(
   gameId: string,
   updates: Partial<IGame>
 ): Promise<IGame | null> {
-  return await Game.findByIdAndUpdate(gameId, updates, { returnDocument: 'after' });
+  return await Game.findByIdAndUpdate(gameId, updates, { new: true });
 }
 
 // Add move to game history
 export async function addMoveToHistory(
   gameId: string,
-  move: Move
+  move: Move,
+  boardAfter: string
 ): Promise<IGame | null> {
-  // Strip ruleset field before storing
-  const moveToStore = stripRulesetFromMove(move);
+  // Convert move to history entry and strip ruleset
+  const historyEntry = moveToHistoryEntry(move, boardAfter);
+  
+  // Determine next turn (flip current turn)
+  const game = await Game.findById(gameId);
+  if (!game) return null;
+  
+  const nextTurn = game.turn === 'red' ? 'black' : 'red';
   
   return await Game.findByIdAndUpdate(
     gameId,
     {
-      $push: { history: moveToStore },
+      $push: { history: historyEntry },
       $inc: { move_count: 1 },
-      $set: { updated_at: new Date() }
+      $set: {
+        board: boardAfter,
+        turn: nextTurn,
+        updated_at: new Date()
+      }
     },
-    { returnDocument: 'after' }
+    { new: true }
   );
 }
 

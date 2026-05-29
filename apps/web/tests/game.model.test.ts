@@ -3,6 +3,7 @@ import mongoose from 'mongoose';
 import { MongoMemoryServer } from 'mongodb-memory-server';
 import { Game } from '../src/models/game.model';
 import { ENGLISH, INTERNATIONAL } from '@checkers/shared';
+import { buildStandardLayout } from '../src/models/game.service';
 
 // Set up MongoDB Memory Server
 let mongoServer: MongoMemoryServer;
@@ -114,26 +115,4 @@ describe('Game Model', () => {
   });
 });
 
-// Helper function to build standard layout for testing
-function buildStandardLayout(ruleset: any): string {
-  const { boardSize } = ruleset;
-  const rowsOfPieces = Math.floor(boardSize / 2) - 1;
-  let result = '';
-
-  for (let row = 0; row < boardSize; row++) {
-    for (let col = 0; col < boardSize; col++) {
-      const isDark = (row + col) % 2 !== 0;
-      let char = isDark ? '#' : '-';
-
-      if (isDark) {
-        if (row < rowsOfPieces) {
-          char = 'r';
-        } else if (row >= boardSize - rowsOfPieces) {
-          char = 'b';
-        }
-      }
-      result += char;
-    }
-  }
-  return result;
-}
+import { buildStandardLayout } from '../src/models/game.service';

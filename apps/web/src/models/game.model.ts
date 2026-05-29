@@ -89,7 +89,7 @@ GameSchema.pre('save', function(next) {
 });
 
 // Create the Game model
-export const Game = mongoose.model('Game', GameSchema);
+export const Game = mongoose.model<IGame>('Game', GameSchema);
 
 // TypeScript interface for Game document
 export interface IGame extends Document {

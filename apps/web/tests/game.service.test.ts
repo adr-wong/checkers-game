@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeAll, afterAll, beforeEach } from 'bun:test';
 import mongoose from 'mongoose';
 import { MongoMemoryServer } from 'mongodb-memory-server';
-import { createGame, getGameById, addMoveToHistory } from '../src/models/game.service';
+import { createGame, getGameById, addMoveToHistory, buildStandardLayout, updateGame } from '../src/models/game.service';
 import { ENGLISH } from '@checkers/shared';
 
 // Set up MongoDB Memory Server
@@ -83,21 +83,24 @@ describe('Game Service', () => {
       to: [3, 2],
       captures: [],
       promotion: false,
-      board_after: game.board, // Simplified for test
-      timestamp: new Date(),
       ruleset: ENGLISH // This should be stripped
     };
 
-    const updatedGame = await addMoveToHistory(gameId, moveWithRuleset);
+    const boardAfter = 'updated-board-string';
+    const updatedGame = await addMoveToHistory(gameId, moveWithRuleset, boardAfter);
     
     expect(updatedGame?.history).toHaveLength(1);
     const storedMove = updatedGame?.history[0];
     
-    // Verify ruleset field was stripped
+    // Verify ruleset field was stripped and metadata added
     expect(storedMove).not.toHaveProperty('ruleset');
     expect(storedMove?.from).toEqual([2, 1]);
     expect(storedMove?.to).toEqual([3, 2]);
+    expect(storedMove?.board_after).toBe(boardAfter);
+    expect(storedMove?.timestamp).toBeInstanceOf(Date);
     expect(updatedGame?.move_count).toBe(1);
+    expect(updatedGame?.board).toBe(boardAfter);
+    expect(updatedGame?.turn).toBe('black'); // Turn should flip from red
   });
 
   it('should use ruleset.boardSize instead of board_size field', async () => {
@@ -109,5 +112,58 @@ describe('Game Service', () => {
     
     // Verify no board_size field exists
     expect(game).not.toHaveProperty('board_size');
+  });
+
+  it('should return null for nonexistent game ID', async () => {
+    const nonexistentId = '507f1f77bcf86cd799439011'; // Valid ObjectId format
+    const result = await getGameById(nonexistentId);
+    expect(result).toBeNull();
+  });
+
+  it('should update updated_at field after game update', async () => {
+    const game = await createGame(ENGLISH, 'pvp');
+    const gameId = game._id.toString();
+    
+    const originalUpdatedAt = game.updated_at;
+    
+    // Wait a bit to ensure timestamp difference
+    await new Promise(resolve => setTimeout(resolve, 10));
+    
+    const updatedGame = await updateGame(gameId, { status: 'red_wins' });
+    
+    expect(updatedGame?.updated_at).not.toBe(originalUpdatedAt);
+    expect(updatedGame?.status).toBe('red_wins');
+  });
+
+  it('should increment move_count across multiple moves', async () => {
+    const game = await createGame(ENGLISH, 'pvp');
+    const gameId = game._id.toString();
+    
+    expect(game.move_count).toBe(0);
+    
+    // First move
+    const move1 = {
+      from: [2, 1],
+      to: [3, 2],
+      captures: [],
+      promotion: false,
+      ruleset: ENGLISH
+    };
+    
+    const afterMove1 = await addMoveToHistory(gameId, move1, 'board-after-move-1');
+    expect(afterMove1?.move_count).toBe(1);
+    
+    // Second move
+    const move2 = {
+      from: [5, 0],
+      to: [4, 1],
+      captures: [],
+      promotion: false,
+      ruleset: ENGLISH
+    };
+    
+    const afterMove2 = await addMoveToHistory(gameId, move2, 'board-after-move-2');
+    expect(afterMove2?.move_count).toBe(2);
+    expect(afterMove2?.history).toHaveLength(2);
   });
 });
