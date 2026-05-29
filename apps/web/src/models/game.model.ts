@@ -1,4 +1,4 @@
-import mongoose, { Schema, Document, Types } from 'mongoose';
+import mongoose, { Schema, Document } from 'mongoose';
 import { validateRuleSet, type RuleSet } from '@checkers/shared';
 
 // Define the Move schema for history entries

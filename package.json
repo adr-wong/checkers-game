@@ -11,8 +11,5 @@
     "test:shared": "bun test --cwd packages/shared",
     "test:ai": "bun test --cwd apps/ai-service"
   },
-  "dependencies": {
-    "@types/mongoose": "^5.11.97",
-    "mongoose": "^9.6.3"
-  }
+  "dependencies": {}
 }

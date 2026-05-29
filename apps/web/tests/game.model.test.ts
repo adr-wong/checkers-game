@@ -3,7 +3,6 @@ import mongoose from 'mongoose';
 import { MongoMemoryServer } from 'mongodb-memory-server';
 import { Game } from '../src/models/game.model';
 import { ENGLISH, INTERNATIONAL } from '@checkers/shared';
-import { buildStandardLayout } from '../src/models/game.service';
 
 // Set up MongoDB Memory Server
 let mongoServer: MongoMemoryServer;
@@ -87,7 +86,7 @@ describe('Game Model', () => {
       mode: 'pva',
       difficulty: 'medium',
       ai_team: 'black',
-      board: buildStandardLayout(INTERNATIONAL),
+      board: 'b#b#b#b#b#b#b#b#b#-#-#-#-#-#-#-#b#b#b#b#b#b#b#b#b#-#-#-#-#-#-#-#-------#-#-#-#-#-#-#-#-------#-#-#-#-#-#-#-#r#r#r#r#r#r#r#r#r#-#-#-#-#-#-#-#r#r#r#r#r#r#r#r#r#-#-#-#-#-#-#-#',
       turn: 'red',
       status: 'active',
       move_count: 0,

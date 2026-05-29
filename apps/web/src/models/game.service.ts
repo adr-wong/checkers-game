@@ -1,21 +1,7 @@
 import { Game, IGame } from './game.model';
-import { validateRuleSet, type RuleSet, type Move } from '@checkers/shared';
+import { validateRuleSet, type RuleSet, type Move, buildStandardLayout } from '@checkers/shared';
 
-// History entry type - Move without ruleset field
-export type HistoryEntry = Omit<Move, 'ruleset'> & {
-  board_after: string;
-  timestamp: Date;
-};
-
-// Convert Move to HistoryEntry by stripping ruleset and adding metadata
-export function moveToHistoryEntry(move: Move, boardAfter: string): HistoryEntry {
-  const { ruleset: _, ...moveData } = move;
-  return {
-    ...moveData,
-    board_after: boardAfter,
-    timestamp: new Date()
-  };
-}
+// buildStandardLayout is imported from @checkers/shared
 
 // Create a new game
 export async function createGame(
@@ -65,7 +51,11 @@ export async function updateGame(
   gameId: string,
   updates: Partial<IGame>
 ): Promise<IGame | null> {
-  return await Game.findByIdAndUpdate(gameId, updates, { new: true });
+  return await Game.findByIdAndUpdate(
+    gameId,
+    { ...updates, updated_at: new Date() },
+    { new: true }
+  );
 }
 
 // Add move to game history
@@ -75,7 +65,12 @@ export async function addMoveToHistory(
   boardAfter: string
 ): Promise<IGame | null> {
   // Convert move to history entry and strip ruleset
-  const historyEntry = moveToHistoryEntry(move, boardAfter);
+  const { ruleset: _, ...moveData } = move;
+  const historyEntry = {
+    ...moveData,
+    board_after: boardAfter,
+    timestamp: new Date()
+  };
   
   // Determine next turn (flip current turn)
   const game = await Game.findById(gameId);
@@ -98,30 +93,7 @@ export async function addMoveToHistory(
   );
 }
 
-// Helper function to build standard layout
-export function buildStandardLayout(ruleset: RuleSet): string {
-  const { boardSize } = ruleset;
-  const rowsOfPieces = Math.floor(boardSize / 2) - 1;
-  const totalCells = boardSize * boardSize;
-  let result = '';
 
-  for (let row = 0; row < boardSize; row++) {
-    for (let col = 0; col < boardSize; col++) {
-      const isDark = (row + col) % 2 !== 0;
-      let char = isDark ? '#' : '-';
-
-      if (isDark) {
-        if (row < rowsOfPieces) {
-          char = 'r';
-        } else if (row >= boardSize - rowsOfPieces) {
-          char = 'b';
-        }
-      }
-      result += char;
-    }
-  }
-  return result;
-}
 
 // Helper function to build custom layout
 export function buildCustomLayout(ruleset: RuleSet): string {
