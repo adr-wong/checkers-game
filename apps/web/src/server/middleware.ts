@@ -1,11 +1,13 @@
 import { Context, Next } from 'hono'
 
 // CORS middleware configuration
-const allowedOrigins = ['http://localhost:3000', 'http://localhost:5173']
+const allowedOrigins = process.env.ALLOWED_ORIGIN || '*'
 const corsMiddleware = async (c: Context, next: Next) => {
   const origin = c.req.header('Origin')
   
-  if (origin && allowedOrigins.includes(origin)) {
+  const isAllowed = allowedOrigins === '*' || origin === allowedOrigins
+  
+  if (origin && isAllowed) {
     c.header('Access-Control-Allow-Origin', origin)
     c.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS')
     c.header('Access-Control-Allow-Headers', 'Content-Type, Authorization')

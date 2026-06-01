@@ -1,8 +1,16 @@
-import { type Move, type RuleSet } from '@checkers/shared';
+import { type Move, type RuleSet, parseBoardString, isGameOver } from '@checkers/shared';
+import { addMoveToHistory, updateGame } from '../models/game.service.ts';
 
 // Configuration for AI service
 // In a real application, this would come from environment variables
 const AI_SERVICE_BASE_URL = 'http://localhost:4000';
+
+export class AiServiceError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'AiServiceError';
+  }
+}
 
 /**
  * Requests an AI move from the AI service
@@ -27,19 +35,19 @@ export async function requestAiMove(
 }> {
   // Validate inputs
   if (!['red', 'black'].includes(team)) {
-    throw new Error('Invalid team: must be "red" or "black"');
+    throw new AiServiceError('Invalid team: must be "red" or "black"');
   }
   
   if (!['easy', 'medium', 'hard'].includes(difficulty)) {
-    throw new Error('Invalid difficulty: must be "easy", "medium", or "hard"');
+    throw new AiServiceError('Invalid difficulty: must be "easy", "medium", or "hard"');
   }
   
   if (!['minimax', 'astar'].includes(algorithm)) {
-    throw new Error('Invalid algorithm: must be "minimax" or "astar"');
+    throw new AiServiceError('Invalid algorithm: must be "minimax" or "astar"');
   }
   
   if (typeof board !== 'string' || board.length === 0) {
-    throw new Error('Invalid board: must be a non-empty string');
+    throw new AiServiceError('Invalid board: must be a non-empty string');
   }
 
   try {
@@ -60,35 +68,35 @@ export async function requestAiMove(
     if (!response.ok) {
       const errorData = await response.json().catch(() => ({}));
       const errorMessage = errorData.error || `AI service returned status ${response.status}`;
-      throw new Error(errorMessage);
+      throw new AiServiceError(errorMessage);
     }
 
     const data = await response.json();
 
     // Validate response structure
     if (!data || typeof data !== 'object') {
-      throw new Error('Invalid response from AI service');
+      throw new AiServiceError('Invalid response from AI service');
     }
 
     if (!Array.isArray(data.from) || data.from.length !== 2 ||
         !Array.isArray(data.to) || data.to.length !== 2) {
-      throw new Error('Invalid move coordinates in AI response');
+      throw new AiServiceError('Invalid move coordinates in AI response');
     }
 
     if (!Array.isArray(data.captures)) {
-      throw new Error('Invalid captures in AI response');
+      throw new AiServiceError('Invalid captures in AI response');
     }
 
     if (typeof data.promotion !== 'boolean') {
-      throw new Error('Invalid promotion flag in AI response');
+      throw new AiServiceError('Invalid promotion flag in AI response');
     }
 
     if (typeof data.resulting_board !== 'string') {
-      throw new Error('Invalid resulting board in AI response');
+      throw new AiServiceError('Invalid resulting board in AI response');
     }
 
     if (typeof data.algorithm !== 'string') {
-      throw new Error('Invalid algorithm in AI response');
+      throw new AiServiceError('Invalid algorithm in AI response');
     }
 
     return {
@@ -102,10 +110,13 @@ export async function requestAiMove(
       algorithm: data.algorithm,
     };
   } catch (error) {
-    if (error instanceof Error) {
-      throw new Error(`Failed to request AI move: ${error.message}`);
+    if (error instanceof AiServiceError) {
+      throw error;
     }
-    throw new Error('Failed to request AI move: unknown error');
+    if (error instanceof Error) {
+      throw new AiServiceError(`Failed to request AI move: ${error.message}`);
+    }
+    throw new AiServiceError('Failed to request AI move: unknown error');
   }
 }
 
@@ -118,7 +129,7 @@ export async function requestAiMove(
  * @param currentBoard - The current board state
  * @param ruleset - The ruleset being used
  * @returns Promise resolving to the updated game state
- * @throws Error if the AI move cannot be processed
+ * @throws AiServiceError if the AI move cannot be processed
  */
 export async function triggerAiTurn(
   gameId: string,
@@ -142,8 +153,25 @@ export async function triggerAiTurn(
       ruleset
     );
 
+    // Add move to history
+    const updatedGame = await addMoveToHistory(gameId, { ...move, ruleset }, resultingBoard);
+
+    if (!updatedGame) {
+      throw new AiServiceError('Failed to add AI move to history');
+    }
+
     // Determine next turn
     const nextTurn = team === 'red' ? 'black' : 'red';
+
+    // Check if game is over
+    const board = parseBoardString(resultingBoard, ruleset);
+    const gameOverResult = isGameOver(board, ruleset);
+
+    if (gameOverResult) {
+      await updateGame(gameId, {
+        status: gameOverResult.winner === 'draw' ? 'draw' : `${gameOverResult.winner}_wins`
+      });
+    }
 
     return {
       move,
@@ -151,9 +179,12 @@ export async function triggerAiTurn(
       nextTurn,
     };
   } catch (error) {
-    if (error instanceof Error) {
-      throw new Error(`Failed to trigger AI turn: ${error.message}`);
+    if (error instanceof AiServiceError) {
+      throw error;
     }
-    throw new Error('Failed to trigger AI turn: unknown error');
+    if (error instanceof Error) {
+      throw new AiServiceError(`Failed to trigger AI turn: ${error.message}`);
+    }
+    throw new AiServiceError('Failed to trigger AI turn: unknown error');
   }
 }

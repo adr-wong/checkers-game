@@ -8,7 +8,6 @@
 import { Hono } from "hono";
 import { cors } from "hono/cors";
 import mongoose from "mongoose";
-import { serve } from "@hono/node-server";
 
 // ─── Environment Configuration ──────────────────────────────────────────────
 
@@ -19,14 +18,8 @@ const ALLOWED_ORIGIN = process.env.ALLOWED_ORIGIN || "*";
 // ─── MongoDB Connection ────────────────────────────────────────────────────
 
 async function connectToMongoDB(): Promise<void> {
-  try {
-    await mongoose.connect(MONGODB_URI);
-    console.log("✅ MongoDB connected successfully");
-  } catch (error) {
-    console.error("❌ MongoDB connection error:", error);
-    console.warn("⚠️  Starting server without database connection");
-    // Don't exit, allow server to start for testing purposes
-  }
+  await mongoose.connect(MONGODB_URI);
+  console.log("✅ MongoDB connected successfully");
 }
 
 // ─── Hono App Setup ──────────────────────────────────────────────────────────
@@ -51,15 +44,13 @@ app.get("/health", (c) => {
 // ─── Server Startup ─────────────────────────────────────────────────────────
 
 async function startServer(): Promise<void> {
-  // Connect to MongoDB (non-blocking)
-  connectToMongoDB().catch((error) => {
-    console.error("MongoDB connection failed but server continues:", error);
-  });
+  // Connect to MongoDB
+  await connectToMongoDB();
 
   // Start the Hono server
   console.log(`🚀 Web server starting on port ${PORT}`);
   
-  serve({
+  Bun.serve({
     fetch: app.fetch,
     port: PORT
   }, () => {

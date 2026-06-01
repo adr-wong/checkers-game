@@ -1,8 +1,57 @@
 import { Hono } from 'hono'
 import { z } from 'zod'
-import { createGame, getGameById, updateGame, addMoveToHistory } from '../../models/game.service'
-import { type RuleSet, type Move, PRESET_RULESETS } from '@checkers/shared'
+import { createGame, getGameById, addMoveToHistory, updateGame } from '../../models/game.service'
+import { triggerAiTurn, AiServiceError } from '../../services/ai.client'
+import { type RuleSet, type Move, type GameStatus, PRESET_RULESETS } from '@checkers/shared'
 import { getLegalMoves, applyMove, isGameOver, parseBoardString, serializeBoardString } from '@checkers/shared'
+
+// Response types
+type GameStateResponse = {
+  gameId: string
+  board: string
+  ruleset: RuleSet
+  turn: 'red' | 'black'
+  status: GameStatus
+  mode: 'pvp' | 'pva' | 'ava'
+  difficulty?: 'easy' | 'medium' | 'hard'
+  ai_team?: 'red' | 'black'
+  algorithm?: 'minimax' | 'astar'
+  move_count: number
+}
+
+type MoveResponse = {
+  from: [number, number]
+  to: [number, number]
+  captures: [number, number][]
+  promotion: boolean
+}
+
+// Helper to build game state response
+function buildGameStateResponse(game: {
+  _id: string | { toString(): string }
+  board: string
+  ruleset: RuleSet
+  turn: 'red' | 'black'
+  status: GameStatus
+  mode: 'pvp' | 'pva' | 'ava'
+  difficulty?: 'easy' | 'medium' | 'hard'
+  ai_team?: 'red' | 'black'
+  algorithm?: 'minimax' | 'astar'
+  move_count: number
+}): GameStateResponse {
+  return {
+    gameId: typeof game._id === 'string' ? game._id : game._id.toString(),
+    board: game.board,
+    ruleset: game.ruleset,
+    turn: game.turn,
+    status: game.status,
+    mode: game.mode,
+    difficulty: game.difficulty,
+    ai_team: game.ai_team,
+    algorithm: game.algorithm,
+    move_count: game.move_count
+  }
+}
 
 // Create game router
 const gameRouter = new Hono()
@@ -26,6 +75,11 @@ const moveSchema = z.object({
   promotion: z.boolean()
 })
 
+const positionQuerySchema = z.object({
+  row: z.coerce.number().int(),
+  col: z.coerce.number().int()
+})
+
 // POST / - Create a new game
 gameRouter.post('/', async (c) => {
   try {
@@ -47,13 +101,10 @@ gameRouter.post('/', async (c) => {
     }
 
     const game = await createGame(fullRuleset, mode, difficulty, ai_team, algorithm)
-    
+
     return c.json({
       gameId: game._id,
-      status: 'created',
-      ruleset: game.ruleset,
-      mode: game.mode,
-      turn: game.turn
+      state: buildGameStateResponse(game)
     }, 201)
   } catch (error) {
     if (error instanceof Error) {
@@ -79,16 +130,7 @@ gameRouter.get('/:gameId/state', async (c) => {
       return c.json({ error: 'Game not found' }, 404)
     }
     
-    return c.json({
-      ruleset: game.ruleset,
-      mode: game.mode,
-      board: game.board,
-      turn: game.turn,
-      status: game.status,
-      move_count: game.move_count,
-      created_at: game.created_at,
-      updated_at: game.updated_at
-    })
+    return c.json(buildGameStateResponse(game))
   } catch (error) {
     console.error('Error in get game state:', error)
     if (error instanceof Error && error.message.includes('Cast to ObjectId failed')) {
@@ -102,20 +144,56 @@ gameRouter.get('/:gameId/state', async (c) => {
 gameRouter.get('/:gameId/legal', async (c) => {
   try {
     const gameId = c.req.param('gameId')
+
+    // Validate gameId format
+    if (!gameId || gameId.length !== 24) {
+      return c.json({ error: 'Invalid game ID format' }, 400)
+    }
+
     const game = await getGameById(gameId)
-    
+
     if (!game) {
       return c.json({ error: 'Game not found' }, 404)
     }
-    
+
     const board = parseBoardString(game.board, game.ruleset)
-    const legalMoves = getLegalMoves(board, game.ruleset, game.turn)
-    
+    const allLegalMoves = getLegalMoves(board, game.ruleset, game.turn)
+
+    // Validate and extract query parameters
+    const queryParams = c.req.query()
+    const queryValidation = positionQuerySchema.safeParse(queryParams)
+
+    if (!queryValidation.success) {
+      return c.json({ error: 'Invalid query parameters: row and col are required integers' }, 400)
+    }
+
+    const { row, col } = queryValidation.data
+
+    // Validate the cell belongs to the current player
+    if (row < 0 || row >= board.length || col < 0 || col >= board[0]?.length) {
+      return c.json({ error: 'Position out of bounds' }, 400)
+    }
+
+    const cell = board[row][col]
+    if (!cell.piece) {
+      return c.json({ error: 'No piece at specified position' }, 400)
+    }
+
+    if (cell.piece.team !== game.turn) {
+      return c.json({ error: 'It is not your turn to move this piece' }, 400)
+    }
+
+    // Filter legal moves to only those from the specified position
+    const legalMoves = allLegalMoves.filter(m => m.from[0] === row && m.from[1] === col)
+
     return c.json({
       turn: game.turn,
       legal_moves: legalMoves
     })
   } catch (error) {
+    if (error instanceof Error && error.message.includes('Cast to ObjectId failed')) {
+      return c.json({ error: 'Invalid game ID format' }, 400)
+    }
     if (error instanceof Error) {
       return c.json({ error: error.message }, 400)
     }
@@ -134,7 +212,7 @@ gameRouter.post('/:gameId/move', async (c) => {
     }
     
     if (game.status !== 'active') {
-      return c.json({ error: 'Game is already over' }, 400)
+      return c.json({ error: 'Game is already over' }, 409)
     }
     
     const body = await c.req.json()
@@ -164,7 +242,7 @@ gameRouter.post('/:gameId/move', async (c) => {
     )
     
     if (!isLegalMove) {
-      return c.json({ error: 'Illegal move' }, 400)
+      return c.json({ error: 'Illegal move' }, 422)
     }
     
     // Apply the move
@@ -176,33 +254,76 @@ gameRouter.post('/:gameId/move', async (c) => {
     const newBoard = applyMove(board, moveWithRuleset, game.ruleset)
     const boardAfter = serializeBoardString(newBoard, game.ruleset)
     
-    // Update game state
+    // Save player move to history
     const updatedGame = await addMoveToHistory(gameId, moveWithRuleset, boardAfter)
     
     if (!updatedGame) {
       return c.json({ error: 'Failed to update game' }, 500)
     }
     
-    // Check if game is over
+    // Check if game is over after player move
     const gameOverResult = isGameOver(newBoard, game.ruleset)
     if (gameOverResult) {
-      const statusUpdate = await updateGame(gameId, {
+      const finalGame = await updateGame(gameId, {
         status: gameOverResult.winner === 'draw' ? 'draw' : `${gameOverResult.winner}_wins`
       })
-      
-      if (!statusUpdate) {
-        return c.json({ error: 'Failed to update game status' }, 500)
+      const moveResponse: MoveResponse = {
+        from: move.from,
+        to: move.to,
+        captures: move.captures as [number, number][],
+        promotion: move.promotion
+      }
+      return c.json({
+        move: moveResponse,
+        state: finalGame ? buildGameStateResponse(finalGame) : buildGameStateResponse(updatedGame)
+      })
+    }
+
+    // Check if mode is pva and it's now AI's turn
+    const nextTurn = updatedGame.turn
+    if (game.mode === 'pva' && game.ai_team === nextTurn) {
+      try {
+        const aiResult = await triggerAiTurn(
+          gameId,
+          nextTurn,
+          game.difficulty as 'easy' | 'medium' | 'hard',
+          game.algorithm as 'minimax' | 'astar',
+          boardAfter,
+          game.ruleset
+        )
+
+        const playerMoveResponse: MoveResponse = {
+          from: move.from,
+          to: move.to,
+          captures: move.captures as [number, number][],
+          promotion: move.promotion
+        }
+
+        // Get updated game state after AI move
+        const gameAfterAi = await getGameById(gameId)
+
+        return c.json({
+          move: playerMoveResponse,
+          state: gameAfterAi ? buildGameStateResponse(gameAfterAi) : buildGameStateResponse(updatedGame)
+        })
+      } catch (error) {
+        if (error instanceof AiServiceError) {
+          return c.json({ error: 'AI service unavailable', details: error.message }, 503)
+        }
+        throw error
       }
     }
-    
+
+    const playerMoveResponse: MoveResponse = {
+      from: move.from,
+      to: move.to,
+      captures: move.captures as [number, number][],
+      promotion: move.promotion
+    }
+
     return c.json({
-      status: 'success',
-      board: boardAfter,
-      turn: updatedGame.turn,
-      move_count: updatedGame.move_count,
-      game_over: gameOverResult ? {
-        winner: gameOverResult.winner
-      } : null
+      move: playerMoveResponse,
+      state: buildGameStateResponse(updatedGame)
     })
   } catch (error) {
     if (error instanceof Error) {
@@ -223,18 +344,18 @@ gameRouter.post('/:gameId/resign', async (c) => {
     }
     
     if (game.status !== 'active') {
-      return c.json({ error: 'Game is already over' }, 400)
+      return c.json({ error: 'Game is already over' }, 409)
     }
     
-    const body = await c.req.json()
-    const { player } = body
-    
-    if (!player || (player !== 'red' && player !== 'black')) {
-      return c.json({ error: 'Invalid player' }, 400)
+const body = await c.req.json()
+    const { team } = body
+
+    if (!team || (team !== 'red' && team !== 'black')) {
+      return c.json({ error: 'Invalid team' }, 400)
     }
-    
+
     // Determine winner (opposite of resigning player)
-    const winner = player === 'red' ? 'black' : 'red'
+    const winner = team === 'red' ? 'black' : 'red'
     
     const updatedGame = await updateGame(gameId, {
       status: `${winner}_wins`
@@ -245,9 +366,7 @@ gameRouter.post('/:gameId/resign', async (c) => {
     }
     
     return c.json({
-      status: 'success',
-      winner: winner,
-      game_status: updatedGame.status
+      state: buildGameStateResponse(updatedGame)
     })
   } catch (error) {
     return c.json({ error: 'Internal server error' }, 500)

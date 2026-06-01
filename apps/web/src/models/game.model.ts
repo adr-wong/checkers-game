@@ -45,7 +45,7 @@ const GameSchema = new Schema({
   },
   algorithm: {
     type: String,
-    enum: ['minimax', 'alphabeta', 'mcts', 'random'],
+    enum: ['minimax', 'astar'],
     required: function(this: { mode: string }) {
       return this.mode !== 'pvp';
     }
@@ -104,7 +104,7 @@ export interface IGame extends Document {
   mode: 'pvp' | 'pva' | 'ava';
   difficulty?: 'easy' | 'medium' | 'hard';
   ai_team?: 'red' | 'black';
-  algorithm?: 'minimax' | 'alphabeta' | 'mcts' | 'random';
+  algorithm?: 'minimax' | 'astar';
   board: string;
   turn: 'red' | 'black';
   status: 'active' | 'red_wins' | 'black_wins' | 'draw';

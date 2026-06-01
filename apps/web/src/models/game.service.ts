@@ -9,7 +9,7 @@ export async function createGame(
   mode: 'pvp' | 'pva' | 'ava',
   difficulty?: 'easy' | 'medium' | 'hard',
   ai_team?: 'red' | 'black',
-  algorithm?: 'minimax' | 'alphabeta' | 'mcts' | 'random'
+  algorithm?: 'minimax' | 'astar'
 ): Promise<IGame> {
   // Validate ruleset
   const rulesetErrors = validateRuleSet(ruleset);

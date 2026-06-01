@@ -30,7 +30,6 @@
       "name": "web",
       "dependencies": {
         "@checkers/shared": "workspace:*",
-        "@hono/node-server": "^2.0.4",
         "hono": "^4.12.23",
         "mongoose": "^9.6.3",
       },
@@ -55,8 +54,6 @@
     "@checkers/ai-service": ["@checkers/ai-service@workspace:apps/ai-service"],
 
     "@checkers/shared": ["@checkers/shared@workspace:packages/shared"],
-
-    "@hono/node-server": ["@hono/node-server@2.0.4", "", { "peerDependencies": { "hono": "^4" } }, "sha512-Ut3y0dMMPWy6bZ2kVfx25EOVbZlm15dhF4mOsezMlhpNHy+4MkU1qN9Y6lnruYi4wPmFzimGX2X7LF/FwHli4A=="],
 
     "@mongodb-js/saslprep": ["@mongodb-js/saslprep@1.4.11", "", { "dependencies": { "sparse-bitfield": "^3.0.3" } }, "sha512-o9rAHc0IpIjuPSxRutWpE1F62x7n+4mVS4rCNHkzhIUMQcc18bb6xEq5wd2NdN0WjepIyXIppRshYI2kQDOZVA=="],
 

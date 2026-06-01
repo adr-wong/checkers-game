@@ -2,6 +2,8 @@ import { type RuleSet } from "./ruleset";
 
 export type Team = "red" | "black";
 
+export type GameStatus = 'active' | 'red_wins' | 'black_wins' | 'draw';
+
 export type PieceType = "normal" | "king";
 
 export type Cell = {

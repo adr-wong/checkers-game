@@ -28,9 +28,9 @@ beforeEach(async () => {
 })
 
 describe('Game API', () => {
-  describe('POST /games', () => {
+  describe('POST /api/game', () => {
     test('should create a new game with preset ruleset', async () => {
-      const response = await app.request('/games', {
+      const response = await app.request('/api/game', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -42,10 +42,11 @@ describe('Game API', () => {
       expect(response.status).toBe(201)
       const data = await response.json()
       expect(data).toHaveProperty('gameId')
-      expect(data.status).toBe('created')
-      expect(data.ruleset).toEqual(PRESET_RULESETS.english)
-      expect(data.mode).toBe('pvp')
-      expect(data.turn).toBe('red')
+      expect(data.state).toHaveProperty('status')
+      expect(data.state.status).toBe('active')
+      expect(data.state.ruleset).toEqual(PRESET_RULESETS.english)
+      expect(data.state.mode).toBe('pvp')
+      expect(data.state.turn).toBe('red')
     })
 
     test('should create a new game with custom ruleset', async () => {
@@ -61,7 +62,7 @@ describe('Game API', () => {
         startingLayout: 'standard'
       }
 
-      const response = await app.request('/games', {
+      const response = await app.request('/api/game', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -76,14 +77,15 @@ describe('Game API', () => {
       expect(response.status).toBe(201)
       const data = await response.json()
       expect(data).toHaveProperty('gameId')
-      expect(data.status).toBe('created')
-      expect(data.ruleset).toEqual(customRuleset)
-      expect(data.mode).toBe('pva')
-      expect(data.turn).toBe('red')
+      expect(data.state).toHaveProperty('status')
+      expect(data.state.status).toBe('active')
+      expect(data.state.ruleset).toEqual(customRuleset)
+      expect(data.state.mode).toBe('pva')
+      expect(data.state.turn).toBe('red')
     })
 
     test('should return 400 for invalid request body', async () => {
-      const response = await app.request('/games', {
+      const response = await app.request('/api/game', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({})
@@ -95,7 +97,7 @@ describe('Game API', () => {
     })
 
     test('should return 400 for invalid ruleset', async () => {
-      const response = await app.request('/games', {
+      const response = await app.request('/api/game', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -110,10 +112,10 @@ describe('Game API', () => {
     })
   })
 
-  describe('GET /games/:gameId/state', () => {
+  describe('GET /api/game/:gameId/state', () => {
     test('should return game state for valid game', async () => {
       // First create a game
-      const createResponse = await app.request('/games', {
+      const createResponse = await app.request('/api/game', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -126,7 +128,7 @@ describe('Game API', () => {
       const gameId = createData.gameId
 
       // Now get the game state
-      const response = await app.request(`/games/${gameId}/state`)
+      const response = await app.request(`/api/game/${gameId}/state`)
 
       expect(response.status).toBe(200)
       const data = await response.json()
@@ -136,13 +138,11 @@ describe('Game API', () => {
       expect(data).toHaveProperty('turn')
       expect(data).toHaveProperty('status')
       expect(data).toHaveProperty('move_count')
-      expect(data).toHaveProperty('created_at')
-      expect(data).toHaveProperty('updated_at')
     })
 
     test('should return 404 for non-existent game', async () => {
       const fakeGameId = '000000000000000000000000'
-      const response = await app.request(`/games/${fakeGameId}/state`)
+      const response = await app.request(`/api/game/${fakeGameId}/state`)
 
       expect(response.status).toBe(404)
       const data = await response.json()
@@ -151,7 +151,7 @@ describe('Game API', () => {
 
     test('should return 400 for invalid game ID format', async () => {
       const invalidGameId = 'invalid-id'
-      const response = await app.request(`/games/${invalidGameId}/state`)
+      const response = await app.request(`/api/game/${invalidGameId}/state`)
 
       expect(response.status).toBe(400)
       const data = await response.json()
@@ -159,10 +159,10 @@ describe('Game API', () => {
     })
   })
 
-  describe('GET /games/:gameId/legal', () => {
+  describe('GET /api/game/:gameId/legal', () => {
     test('should return legal moves for current player', async () => {
       // Create a game
-      const createResponse = await app.request('/games', {
+      const createResponse = await app.request('/api/game', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -175,7 +175,7 @@ describe('Game API', () => {
       const gameId = createData.gameId
 
       // Get legal moves
-      const response = await app.request(`/games/${gameId}/legal`)
+      const response = await app.request(`/api/game/${gameId}/legal?row=2&col=1`)
 
       expect(response.status).toBe(200)
       const data = await response.json()
@@ -187,7 +187,7 @@ describe('Game API', () => {
 
     test('should return 404 for non-existent game', async () => {
       const fakeGameId = '000000000000000000000000'
-      const response = await app.request(`/games/${fakeGameId}/legal`)
+      const response = await app.request(`/api/game/${fakeGameId}/legal`)
 
       expect(response.status).toBe(404)
       const data = await response.json()
@@ -195,10 +195,10 @@ describe('Game API', () => {
     })
   })
 
-  describe('POST /games/:gameId/move', () => {
+  describe('POST /api/game/:gameId/move', () => {
     test('should make a valid move and update game state', async () => {
       // Create a game
-      const createResponse = await app.request('/games', {
+      const createResponse = await app.request('/api/game', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -211,7 +211,7 @@ describe('Game API', () => {
       const gameId = createData.gameId
 
       // Get legal moves to find a valid move
-      const legalResponse = await app.request(`/games/${gameId}/legal`)
+      const legalResponse = await app.request(`/api/game/${gameId}/legal?row=2&col=1`)
       const legalData = await legalResponse.json()
 
       if (legalData.legal_moves.length === 0) {
@@ -222,7 +222,7 @@ describe('Game API', () => {
       const validMove = legalData.legal_moves[0]
 
       // Make the move
-      const moveResponse = await app.request(`/games/${gameId}/move`, {
+      const moveResponse = await app.request(`/api/game/${gameId}/move`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -235,15 +235,16 @@ describe('Game API', () => {
 
       expect(moveResponse.status).toBe(200)
       const moveData = await moveResponse.json()
-      expect(moveData.status).toBe('success')
-      expect(moveData).toHaveProperty('board')
-      expect(moveData).toHaveProperty('turn')
-      expect(moveData).toHaveProperty('move_count')
+      expect(moveData.state).toBeDefined()
+      expect(moveData.state.status).toBe('active')
+      expect(moveData.state.board).toBeDefined()
+      expect(moveData.state.turn).toBeDefined()
+      expect(moveData.state.move_count).toBeDefined()
     })
 
     test('should return 404 for non-existent game', async () => {
       const fakeGameId = '000000000000000000000000'
-      const response = await app.request(`/games/${fakeGameId}/move`, {
+      const response = await app.request(`/api/game/${fakeGameId}/move`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -261,7 +262,7 @@ describe('Game API', () => {
 
     test('should return 400 for game that is already over', async () => {
       // Create a game
-      const createResponse = await app.request('/games', {
+      const createResponse = await app.request('/api/game', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -277,7 +278,7 @@ describe('Game API', () => {
       await Game.findByIdAndUpdate(gameId, { status: 'red_wins' })
 
       // Try to make a move
-      const response = await app.request(`/games/${gameId}/move`, {
+      const response = await app.request(`/api/game/${gameId}/move`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -288,14 +289,14 @@ describe('Game API', () => {
         })
       })
 
-      expect(response.status).toBe(400)
+      expect(response.status).toBe(409)
       const data = await response.json()
       expect(data.error).toBe('Game is already over')
     })
 
     test('should return 400 for invalid move format', async () => {
       // Create a game
-      const createResponse = await app.request('/games', {
+      const createResponse = await app.request('/api/game', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -308,7 +309,7 @@ describe('Game API', () => {
       const gameId = createData.gameId
 
       // Try to make an invalid move
-      const response = await app.request(`/games/${gameId}/move`, {
+      const response = await app.request(`/api/game/${gameId}/move`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -325,7 +326,7 @@ describe('Game API', () => {
 
     test('should return 400 for wrong player turn', async () => {
       // Create a game
-      const createResponse = await app.request('/games', {
+      const createResponse = await app.request('/api/game', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -338,7 +339,7 @@ describe('Game API', () => {
       const gameId = createData.gameId
 
       // Try to move a black piece when it's red's turn
-      const response = await app.request(`/games/${gameId}/move`, {
+      const response = await app.request(`/api/game/${gameId}/move`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -356,7 +357,7 @@ describe('Game API', () => {
 
     test('should return 400 for illegal move', async () => {
       // Create a game
-      const createResponse = await app.request('/games', {
+      const createResponse = await app.request('/api/game', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -369,7 +370,7 @@ describe('Game API', () => {
       const gameId = createData.gameId
 
       // Try to make an illegal move (moving diagonally forward 2 spaces)
-      const response = await app.request(`/games/${gameId}/move`, {
+      const response = await app.request(`/api/game/${gameId}/move`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -380,16 +381,16 @@ describe('Game API', () => {
         })
       })
 
-      expect(response.status).toBe(400)
+      expect(response.status).toBe(422)
       const data = await response.json()
       expect(data.error).toBe('Illegal move')
     })
   })
 
-  describe('POST /games/:gameId/resign', () => {
+  describe('POST /api/game/:gameId/resign', () => {
     test('should allow player to resign and end game', async () => {
       // Create a game
-      const createResponse = await app.request('/games', {
+      const createResponse = await app.request('/api/game', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -402,25 +403,24 @@ describe('Game API', () => {
       const gameId = createData.gameId
 
       // Red player resigns
-      const response = await app.request(`/games/${gameId}/resign`, {
+      const response = await app.request(`/api/game/${gameId}/resign`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ player: 'red' })
+        body: JSON.stringify({ team: 'red' })
       })
 
       expect(response.status).toBe(200)
       const data = await response.json()
-      expect(data.status).toBe('success')
-      expect(data.winner).toBe('black')
-      expect(data.game_status).toBe('black_wins')
+      expect(data.state).toBeDefined()
+      expect(data.state.status).toBe('black_wins')
     })
 
     test('should return 404 for non-existent game', async () => {
       const fakeGameId = '000000000000000000000000'
-      const response = await app.request(`/games/${fakeGameId}/resign`, {
+      const response = await app.request(`/api/game/${fakeGameId}/resign`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ player: 'red' })
+        body: JSON.stringify({ team: 'red' })
       })
 
       expect(response.status).toBe(404)
@@ -430,7 +430,7 @@ describe('Game API', () => {
 
     test('should return 400 for game that is already over', async () => {
       // Create a game
-      const createResponse = await app.request('/games', {
+      const createResponse = await app.request('/api/game', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -446,20 +446,20 @@ describe('Game API', () => {
       await Game.findByIdAndUpdate(gameId, { status: 'red_wins' })
 
       // Try to resign
-      const response = await app.request(`/games/${gameId}/resign`, {
+      const response = await app.request(`/api/game/${gameId}/resign`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ player: 'black' })
+        body: JSON.stringify({ team: 'black' })
       })
 
-      expect(response.status).toBe(400)
+      expect(response.status).toBe(409)
       const data = await response.json()
       expect(data.error).toBe('Game is already over')
     })
 
-    test('should return 400 for invalid player', async () => {
+    test('should return 400 for invalid team', async () => {
       // Create a game
-      const createResponse = await app.request('/games', {
+      const createResponse = await app.request('/api/game', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -472,15 +472,15 @@ describe('Game API', () => {
       const gameId = createData.gameId
 
       // Try to resign with invalid player
-      const response = await app.request(`/games/${gameId}/resign`, {
+      const response = await app.request(`/api/game/${gameId}/resign`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ player: 'invalid' })
+        body: JSON.stringify({ team: 'invalid' })
       })
 
       expect(response.status).toBe(400)
       const data = await response.json()
-      expect(data.error).toBe('Invalid player')
+      expect(data.error).toBe('Invalid team')
     })
   })
 })

@@ -113,5 +113,3 @@ describe('Game Model', () => {
     await expect(game.save()).rejects.toThrow();
   });
 });
-
-import { buildStandardLayout } from '../src/models/game.service';

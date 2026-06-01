@@ -16,7 +16,7 @@ app.get('/', (c) => {
 })
 
 // Game routes
-app.route('/games', gameRouter)
+app.route('/api/game', gameRouter)
 
 // Not found handler
 app.notFound((c) => {
