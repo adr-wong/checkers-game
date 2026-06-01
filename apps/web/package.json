@@ -6,7 +6,8 @@
   "dependencies": {
     "@checkers/shared": "workspace:*",
     "hono": "^4.12.23",
-    "mongoose": "^9.6.3"
+    "mongoose": "^9.6.3",
+    "zod": "^4.4.3"
   },
   "devDependencies": {
     "mongodb-memory-server": "^11.2.0",

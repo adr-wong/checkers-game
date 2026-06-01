@@ -102,6 +102,23 @@ gameRouter.post('/', async (c) => {
 
     const game = await createGame(fullRuleset, mode, difficulty, ai_team, algorithm)
 
+    // For ava mode, trigger the first AI move for red team (red always moves first)
+    if (mode === 'ava' && ai_team === 'red') {
+      try {
+        await triggerAiTurn(
+          game._id.toString(),
+          'red',
+          difficulty as 'easy' | 'medium' | 'hard',
+          algorithm as 'minimax' | 'astar',
+          game.board,
+          game.ruleset
+        )
+      } catch (error) {
+        // Continue - AI failure will be handled on client polling
+        console.error('Failed to trigger initial AI move:', error)
+      }
+    }
+
     return c.json({
       gameId: game._id,
       state: buildGameStateResponse(game)
@@ -213,6 +230,11 @@ gameRouter.post('/:gameId/move', async (c) => {
     
     if (game.status !== 'active') {
       return c.json({ error: 'Game is already over' }, 409)
+    }
+
+    // For pva mode, check if it's the AI's turn
+    if (game.mode === 'pva' && game.ai_team === game.turn) {
+      return c.json({ error: "It is the AI's turn" }, 409)
     }
     
     const body = await c.req.json()

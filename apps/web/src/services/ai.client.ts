@@ -1,9 +1,8 @@
 import { type Move, type RuleSet, parseBoardString, isGameOver } from '@checkers/shared';
-import { addMoveToHistory, updateGame } from '../models/game.service.ts';
+import { addMoveToHistory, updateGame } from '../models/game.service';
 
 // Configuration for AI service
-// In a real application, this would come from environment variables
-const AI_SERVICE_BASE_URL = 'http://localhost:4000';
+const AI_SERVICE_BASE_URL = process.env.AI_SERVICE_URL || 'http://localhost:4000';
 
 export class AiServiceError extends Error {
   constructor(message: string) {

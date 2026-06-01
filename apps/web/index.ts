@@ -53,9 +53,8 @@ async function startServer(): Promise<void> {
   Bun.serve({
     fetch: app.fetch,
     port: PORT
-  }, () => {
-    console.log(`🌐 Server running at http://localhost:${PORT}`);
   });
+  console.log(`🌐 Server running at http://localhost:${PORT}`);
 }
 
 // Start the server

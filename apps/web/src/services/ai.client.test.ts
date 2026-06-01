@@ -1,16 +1,8 @@
 import { test, expect, describe, mock } from "bun:test";
 import { requestAiMove, AiServiceError } from './ai.client';
-import { type RuleSet } from '@checkers/shared';
+import { ENGLISH, type RuleSet } from '@checkers/shared';
 
-const mockRuleset: RuleSet = {
-  name: 'standard',
-  boardSize: 8,
-  startingLayout: 'standard',
-  kingsCanMoveBackwards: true,
-  maxConsecutiveJumps: 4,
-  forceCapture: true,
-  forceCaptureMax: true
-};
+const mockRuleset: RuleSet = ENGLISH;
 
 const mockBoard = '-r-r-r-r#r-r-r-r#-r-r-r-r#--------#--------#b-b-b-b#-b-b-b-b#b-b-b-b-';
 
