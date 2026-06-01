@@ -112,8 +112,35 @@ local and cloud deployment.
 5.3 Supported Board Sizes
   Standard: 8x8
   Extended: 10x10
-  The board_size field controls which is active. All logic must be
-  parameterized by board_size, not hardcoded to 8.
+  Board size is determined by the active RuleSet (boardSize field in RuleSet).
+  All logic must be parameterized by board_size, not hardcoded to 8.
+
+5.4 RuleSet Configuration
+
+  The game supports multiple checkers variants through a RuleSet configuration object.
+  Each game stores a complete RuleSet that determines all board behavior.
+
+  RuleSet fields:
+    boardSize: 8 | 10
+    normalMoveDirections: 'forward' | 'all' | 'orthogonal'
+    kingMoveDistance: 'single' | 'flying'
+    captureRequired: boolean
+    captureMaximum: boolean
+    captureBackward: boolean
+    promotionEndsJump: boolean
+    startingLayout: 'standard' | CustomLayout
+
+  Preset rulesets:
+    ENGLISH:       8x8,  forward-only normals, single-square kings, mandatory capture,
+                         no max capture, no backward capture, promotion ends jump
+    INTERNATIONAL: 10x10, forward-only normals, flying kings, mandatory capture,
+                         max capture required, backward capture, promotion ends jump
+    BRAZILIAN:     8x8,  forward-only normals, flying kings, mandatory capture,
+                         max capture required, backward capture, promotion ends jump
+    RUSSIAN:       8x8,  forward-only normals, flying kings, mandatory capture,
+                         no max capture, no backward capture, promotion does NOT end jump
+    POOL:          8x8,  all-direction normals, flying kings, mandatory capture,
+                         no max capture, backward capture, promotion ends jump
 
 
 ────────────────────────────────────────────────────────────────────────────────
@@ -128,17 +155,19 @@ local and cloud deployment.
 
   {
     "team":        string,   // "red" | "black" — the AI's team
-    "board_size":  number,   // 8 or 10
     "difficulty":  string,   // "easy" | "medium" | "hard"
-    "board":       string    // flat board string, length = board_size^2
+    "algorithm":   string,   // "minimax" | "astar"
+    "board":       string,   // flat board string
+    "ruleset":     object    // RuleSet object (see Section 5.4)
   }
 
   Validation rules:
   - team must be "red" or "black"
-  - board_size must be 8 or 10
   - difficulty must be "easy", "medium", or "hard"
-  - board.length must equal board_size * board_size
+  - algorithm must be "minimax" or "astar"
+  - board.length must equal ruleset.boardSize * ruleset.boardSize
   - board must contain only characters: # - r R b B
+  - ruleset must be a valid RuleSet object
   - the team must have at least one legal move available
 
 6.3 Response Body (JSON) — Success
@@ -148,6 +177,7 @@ local and cloud deployment.
     "to":              [row, col],          // destination cell
     "captures":        [[row, col], ...],   // cells of captured pieces (0 or more)
     "promotion":       boolean,             // true if move results in a king
+    "algorithm":       string,              // "minimax" | "astar" — algorithm used
     "resulting_board": string               // board string after the move is applied
   }
 
@@ -226,7 +256,8 @@ local and cloud deployment.
   - "New Game" button opens a modal with:
       · Board size selector (8x8 / 10x10)
       · Game mode: Player vs Player | Player vs AI | AI vs AI (spectate)
-      · If AI is involved: difficulty selector (Easy / Medium / Hard)
+      · If AI is involved: difficulty selector (Easy / Medium / Hard) and
+        algorithm selector (Minimax / A*)
       · "Start Game" button → creates game in DB, redirects to /game/$gameId
 
 7.3 Game Board Page
@@ -276,7 +307,7 @@ local and cloud deployment.
 
   The web API is responsible for:
   - Validating that the move comes from the correct player's turn
-  - Calling the AI microservice when it is the AI's turn
+  - Calling the AI microservice when it is the AI's turn (passing the game's ruleset and algorithm)
   - Persisting all state changes to MongoDB
   - Returning the updated game state after every action
 
@@ -289,7 +320,8 @@ local and cloud deployment.
 
   {
     _id:           ObjectId
-    board_size:    Number       // 8 or 10
+    ruleset:       Mixed        // full RuleSet object (see Section 5.4)
+    algorithm:     String       // "minimax" | "astar" (required when mode !== 'pvp')
     mode:          String       // "pvp" | "pva" | "ava"
     difficulty:    String       // "easy" | "medium" | "hard" | null (pvp)
     ai_team:       String       // "red" | "black" | null (pvp)
@@ -374,20 +406,20 @@ local and cloud deployment.
   The shared package must export the following pure utility functions
   (used by both the web service and the AI service):
 
-    parseBoardString(board: string, size: number): Cell[][]
+    parseBoardString(board: string, ruleset: RuleSet): Cell[][]
       Converts a flat board string to a 2D array of Cell objects.
 
-    serializeBoardString(cells: Cell[][], size: number): string
+    serializeBoardString(cells: Cell[][], ruleset: RuleSet): string
       Converts a 2D Cell array back to the flat board string.
 
-    getLegalMoves(board: Cell[][], size: number, team: Team): Move[]
+    getLegalMoves(board: Cell[][], ruleset: RuleSet, team: Team): Move[]
       Returns all legal moves for a team. If any captures are available,
       returns only capture moves (mandatory capture rule).
 
-    applyMove(board: Cell[][], move: Move, size: number): Cell[][]
+    applyMove(board: Cell[][], move: Move, ruleset: RuleSet): Cell[][]
       Returns a new board state after applying the move. Does not mutate input.
 
-    isGameOver(board: Cell[][], size: number): GameOverResult | null
+    isGameOver(board: Cell[][], ruleset: RuleSet): GameOverResult | null
       Returns null if game is still active, or { winner: Team | "draw" }.
 
   Types:
@@ -399,7 +431,9 @@ local and cloud deployment.
       to: [number, number]
       captures: [number, number][]
       promotion: boolean
+      ruleset: RuleSet
     }
+    type GameStatus = 'active' | 'red_wins' | 'black_wins' | 'draw'
     type GameOverResult = { winner: Team | "draw" }
 
 
@@ -410,7 +444,8 @@ local and cloud deployment.
   Execute phases in order. Each phase must pass its tests before proceeding.
 
   Phase 1 — Shared package
-    1a. Define all types in packages/shared/src/types.ts
+    Note: RuleSet modularity was introduced as a patch during Phase 1.
+    1a. Define all types in packages/shared/src/types.ts (including RuleSet)
     1b. Implement board utilities in packages/shared/src/board.ts
     1c. Write unit tests for all board utility functions
         - parseBoardString / serializeBoardString round-trip
@@ -435,7 +470,7 @@ local and cloud deployment.
     2e. Write Dockerfile for ai-service (Bun base image)
 
   Phase 3 — MongoDB setup
-    3a. Write Mongoose schema and model for Game collection
+    3a. Write Mongoose schema and model for Game collection (with ruleset and algorithm fields)
     3b. Write and test all DB access functions (create, read, update)
 
   Phase 4 — Web API
@@ -445,7 +480,7 @@ local and cloud deployment.
     4d. Implement GET /api/game/:gameId/legal
     4e. Implement POST /api/game/:gameId/move
         - Validate it is the correct player's turn
-        - If AI turn follows: call ai-service, apply response, save
+        - If AI turn follows: call ai-service with ruleset and algorithm, apply response, save
     4f. Implement POST /api/game/:gameId/resign
     4g. Integration tests for all API routes
 
@@ -477,7 +512,8 @@ local and cloud deployment.
   - docker compose up starts all services with no manual steps
   - A full PvP game can be played to completion via the browser
   - A full PvA game (all three difficulties) can be played to completion
-  - AI always returns a move within 10 seconds on hard difficulty (8x8)
+  - AI always returns a move within 10 seconds on hard difficulty (8x8);
+    10x10 boards with flying kings may take longer
   - The board string returned in AI response always matches the move applied
   - No TypeScript type errors at build time
   - All API endpoints return correct HTTP status codes for error cases
@@ -490,7 +526,7 @@ local and cloud deployment.
   - User accounts and authentication
   - Online multiplayer (networked PvP)
   - Leaderboards or game history UI
-  - 10x10 international draughts rule variants (flying kings, etc.)
+  - Custom RuleSet builder UI (backend supports it, frontend does not expose it yet)
   - Endgame tablebases (Chinook databases)
   - Mobile native apps
 
