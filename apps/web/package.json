@@ -4,9 +4,10 @@
   "type": "module",
   "private": true,
   "dependencies": {
+    "@checkers/shared": "workspace:*",
+    "@hono/node-server": "^2.0.4",
     "hono": "^4.12.23",
-    "mongoose": "^9.6.3",
-    "@checkers/shared": "workspace:*"
+    "mongoose": "^9.6.3"
   },
   "devDependencies": {
     "mongodb-memory-server": "^11.2.0",

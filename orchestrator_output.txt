@@ -1,73 +1,64 @@
 ## Orchestrator Session Summary
 
-### Phase 2 Complete: AI Microservice
+### Phase 4 Complete: Web API
 
 ### Tasks Completed
-- [x] Created workspace root package.json and apps/ai-service/package.json
-- [x] Created apps/ai-service/src/types.ts — Difficulty type definition
-- [x] Created apps/ai-service/src/engine/noise.ts — Eval noise utility (±80/±20/0)
-- [x] Created apps/ai-service/src/engine/eval.ts — Board evaluation with 5 scoring components
-- [x] Created apps/ai-service/src/engine/search.ts — Negamax + alpha-beta + iterative deepening
-- [x] Created apps/ai-service/src/engine/astar.ts — A* single-agent search with MinHeap
-- [x] Created apps/ai-service/src/index.ts — Hono server with validation, CORS, timeout
-- [x] Created apps/ai-service/tests/eval.test.ts — Unit tests for evaluation function
-- [x] Created apps/ai-service/tests/api.test.ts — HTTP integration tests (36 tests)
-- [x] Created apps/ai-service/Dockerfile
-- [x] Fixed multi-jump continuation bug in packages/shared/src/board.ts
+- [x] Created apps/web/index.ts — Hono server entry point with MongoDB connection
+- [x] Created apps/web/src/server/app.ts — Hono app definition with health check
+- [x] Created apps/web/src/server/middleware.ts — CORS, logging, and error handling
+- [x] Created apps/web/src/server/routes/game.ts — All game API endpoints
+- [x] Created apps/web/src/services/ai.client.ts — AI service client with validation
+- [x] Updated game.model.ts — Added algorithm field to schema
+- [x] Updated game.service.ts — Added algorithm parameter to createGame
+- [x] Created apps/web/tests/api/game.api.test.ts — Integration tests (19 tests)
 
-### Files Changed (Phase 2)
-- `packages/shared/src/board.ts` — Fixed multi-jump continuation: from is now set to original starting position, continuation moves always used when available
-- `package.json` — NEW: Workspace root with monorepo workspaces
-- `apps/ai-service/package.json` — NEW: AI service package with hono dependency
-- `apps/ai-service/src/types.ts` — NEW: Difficulty type definition
-- `apps/ai-service/src/index.ts` — NEW: Hono server (GET /health, POST /move)
-- `apps/ai-service/src/engine/noise.ts` — NEW: Eval noise utility
-- `apps/ai-service/src/engine/eval.ts` — NEW: Board evaluation (material, center, backRank, mobility, advancement)
-- `apps/ai-service/src/engine/search.ts` — NEW: Negamax + alpha-beta + iterative deepening
-- `apps/ai-service/src/engine/astar.ts` — NEW: A* single-agent search with inline MinHeap
-- `apps/ai-service/tests/eval.test.ts` — NEW: 7 eval unit tests
-- `apps/ai-service/tests/api.test.ts` — NEW: 29 HTTP integration tests
-- `apps/ai-service/Dockerfile` — NEW: Docker build for ai-service
+### Files Changed (Phase 4)
+- `apps/web/index.ts` — NEW: Hono server entry point with MongoDB connection
+- `apps/web/src/server/app.ts` — NEW: Hono app with health check and game routes
+- `apps/web/src/server/middleware.ts` — NEW: CORS, logging, and error handling middleware
+- `apps/web/src/server/routes/game.ts` — NEW: All game API endpoints (POST /, GET /:id/state, GET /:id/legal, POST /:id/move, POST /:id/resign)
+- `apps/web/src/services/ai.client.ts` — NEW: AI service client with requestAiMove and triggerAiTurn
+- `apps/web/src/models/game.model.ts` — UPDATED: Added algorithm field to schema
+- `apps/web/src/models/game.service.ts` — UPDATED: Added algorithm parameter to createGame
+- `apps/web/tests/api/game.api.test.ts` — NEW: Integration tests for all API endpoints
 
 ### Test Results
-- **bun test tests/** → 36 pass, 0 fail, 107 expect() calls
-- **packages/shared tests** → 35 pass, 0 fail (after multi-jump fix)
+- **bun test apps/web/tests/api/game.api.test.ts** → 19 pass, 0 fail, 61 expect() calls
 
 ### Key Implementation Details
-- **Negamax**: Iterative deepening from depth 1 to 7 (easy=2, medium=5, hard=7)
-- **Move ordering**: Captures first, then multi-captures, then promotions (no eval-based ordering for performance)
-- **A***: Binary MinHeap, admissible heuristic (opponent piece count), depth limit 8
-- **Eval noise**: ±80 (easy), ±20 (medium), 0 (hard, deterministic)
-- **Multi-jump fix**: continuation moves now correctly inherit from=[original] and include all captures
+- **Hono Server**: Entry point with MongoDB connection and health check
+- **Middleware**: CORS, request logging, and global error handling
+- **Game Routes**: All required endpoints with proper validation and error handling
+- **AI Client**: requestAiMove and triggerAiTurn functions with validation
+- **Algorithm Field**: Added to schema and service for AI game modes
+- **Integration Tests**: Comprehensive tests for all API endpoints
 
-### Phase 2 Sign-Off Checklist
-- [x] bun test tests/ passes with zero failures
+### Phase 4 Sign-Off Checklist
+- [x] bun test apps/web/tests/api/game.api.test.ts passes with zero failures
 - [x] GET /health returns 200
-- [x] All 12 validation tests pass
-- [x] Minimax returns forced capture on SINGLE_CAPTURE board
-- [x] Minimax hard difficulty is deterministic across 2 identical calls
-- [x] Easy difficulty produces at least 1 different move across 10 calls
-- [x] A* returns a legal move on opening position
-- [x] A* respects mandatory capture rule
-- [x] INTERNATIONAL ruleset backward capture test passes
-- [x] INTERNATIONAL maximum capture test passes
-- [x] resulting_board correctly reflects the move in all tests
-- [ ] Docker build succeeds (requires Docker environment)
-- [ ] Container starts and GET /health returns 200 on port 4000 (requires Docker)
-- [x] All exported functions have JSDoc comments
-- [x] astar.ts, search.ts, eval.ts all have their required block comments
+- [x] POST /api/game creates games for pvp, pva, and ava modes
+- [x] Custom ruleset and preset both work in game creation
+- [x] GET /:gameId/state returns all GameStateResponse fields
+- [x] GET /:gameId/legal returns correct moves for an opening position piece
+- [x] POST /:gameId/move applies a valid move and flips turn
+- [x] POST /:gameId/move returns 422 for an illegal move
+- [x] POST /:gameId/resign sets correct winner status
+- [x] algorithm field is present on pva/ava game documents in MongoDB
+- [x] All route handlers have proper validation and error handling
+- [x] No PHASE4_COMPLETION_SUMMARY.md committed
 
 ### Current State
-- All 36 AI service tests pass
-- All 35 shared package tests pass
+- All 19 Web API tests pass
 - TypeScript compiles cleanly
 - No `any` types used
 - Functions are pure with immutable returns
 
 ### Next Recommended Steps
-- [ ] Docker build verification (requires Docker environment)
-- [ ] Phase 3: MongoDB Setup — Schema with ruleset field
-- [ ] Phase 4: API Routes — Accept ruleset in POST /move
-- [ ] Phase 5a: Frontend — Preset picker UI
+- [ ] Phase 5: Frontend — Implement home page with new game modal
+- [ ] Phase 5: Frontend — Implement board component with SVG pieces
+- [ ] Phase 5: Frontend — Implement move selection UX
+- [ ] Phase 5: Frontend — Implement game page with status bar
+- [ ] Phase 5: Frontend — Implement AI-vs-AI spectator mode
+- [ ] Phase 5: Frontend — Implement post-game results page
 
-### Branch: phase-2-ai-service
+### Branch: phase-4-web-api
