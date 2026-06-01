@@ -86,6 +86,7 @@ describe('Game Model', () => {
       mode: 'pva',
       difficulty: 'medium',
       ai_team: 'black',
+      algorithm: 'minimax',
       board: 'b#b#b#b#b#b#b#b#b#-#-#-#-#-#-#-#b#b#b#b#b#b#b#b#b#-#-#-#-#-#-#-#-------#-#-#-#-#-#-#-#-------#-#-#-#-#-#-#-#r#r#r#r#r#r#r#r#r#-#-#-#-#-#-#-#r#r#r#r#r#r#r#r#r#-#-#-#-#-#-#-#',
       turn: 'red',
       status: 'active',

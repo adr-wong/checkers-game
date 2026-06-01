@@ -1,64 +1,50 @@
 ## Orchestrator Session Summary
 
-### Phase 4 Complete: Web API
+### Phase 4 Complete: Web API (All Issues Fixed)
 
 ### Tasks Completed
-- [x] Created apps/web/index.ts — Hono server entry point with MongoDB connection
-- [x] Created apps/web/src/server/app.ts — Hono app definition with health check
-- [x] Created apps/web/src/server/middleware.ts — CORS, logging, and error handling
-- [x] Created apps/web/src/server/routes/game.ts — All game API endpoints
-- [x] Created apps/web/src/services/ai.client.ts — AI service client with validation
-- [x] Updated game.model.ts — Added algorithm field to schema
-- [x] Updated game.service.ts — Added algorithm parameter to createGame
-- [x] Created apps/web/tests/api/game.api.test.ts — Integration tests (19 tests)
+- [x] Fixed route prefix in app.ts from /games to /api/game
+- [x] Updated all test paths to use /api/game
+- [x] Fixed algorithm enum to ['minimax', 'astar'] in model, service, and types
+- [x] Implemented AI turn triggering in POST /:gameId/move
+- [x] Moved DB persistence into triggerAiTurn function
+- [x] Added AiServiceError class and catch it in move route for 503
+- [x] Fixed status codes: game over conflict → 409, illegal move → 422, AI failure → 503
+- [x] Implemented row/col query param filtering in GET /:gameId/legal
+- [x] Fixed all response shapes to match GameStateResponse and MoveResponse specs
+- [x] Changed resign field from 'player' to 'team' and updated tests
+- [x] Replaced @hono/node-server with Bun.serve() in index.ts
+- [x] Removed @hono/node-server from package.json
+- [x] Made mongoose.connect() failure exit the process
+- [x] Read CORS origin from ALLOWED_ORIGIN env var
+- [x] Updated tests to match new response shapes and requirements
+- [x] Removed duplicate buildStandardLayout import from game.model.test.ts
 
 ### Files Changed (Phase 4)
-- `apps/web/index.ts` — NEW: Hono server entry point with MongoDB connection
-- `apps/web/src/server/app.ts` — NEW: Hono app with health check and game routes
-- `apps/web/src/server/middleware.ts` — NEW: CORS, logging, and error handling middleware
-- `apps/web/src/server/routes/game.ts` — NEW: All game API endpoints (POST /, GET /:id/state, GET /:id/legal, POST /:id/move, POST /:id/resign)
-- `apps/web/src/services/ai.client.ts` — NEW: AI service client with requestAiMove and triggerAiTurn
-- `apps/web/src/models/game.model.ts` — UPDATED: Added algorithm field to schema
-- `apps/web/src/models/game.service.ts` — UPDATED: Added algorithm parameter to createGame
-- `apps/web/tests/api/game.api.test.ts` — NEW: Integration tests for all API endpoints
+- `apps/web/src/server/app.ts` — Changed route prefix to /api/game
+- `apps/web/src/server/middleware.ts` — Read CORS from ALLOWED_ORIGIN env var
+- `apps/web/src/server/routes/game.ts` — Full implementation of all game endpoints with proper validation, AI triggering, and response shapes
+- `apps/web/src/services/ai.client.ts` — AiServiceError class, triggerAiTurn with DB persistence
+- `apps/web/src/models/game.model.ts` — Fixed algorithm enum
+- `apps/web/src/models/game.service.ts` — Fixed algorithm parameter type
+- `apps/web/index.ts` — Bun.serve() with process exit on DB failure
+- `apps/web/package.json` — Removed @hono/node-server
+- `apps/web/tests/api/game.api.test.ts` — Updated all tests
+- `apps/web/tests/game.model.test.ts` — Removed duplicate import
+- `packages/shared/src/types.ts` — Added GameStatus export
+- `packages/shared/src/index.ts` — Exported GameStatus
 
 ### Test Results
 - **bun test apps/web/tests/api/game.api.test.ts** → 19 pass, 0 fail, 61 expect() calls
 
 ### Key Implementation Details
-- **Hono Server**: Entry point with MongoDB connection and health check
-- **Middleware**: CORS, request logging, and global error handling
-- **Game Routes**: All required endpoints with proper validation and error handling
-- **AI Client**: requestAiMove and triggerAiTurn functions with validation
-- **Algorithm Field**: Added to schema and service for AI game modes
-- **Integration Tests**: Comprehensive tests for all API endpoints
-
-### Phase 4 Sign-Off Checklist
-- [x] bun test apps/web/tests/api/game.api.test.ts passes with zero failures
-- [x] GET /health returns 200
-- [x] POST /api/game creates games for pvp, pva, and ava modes
-- [x] Custom ruleset and preset both work in game creation
-- [x] GET /:gameId/state returns all GameStateResponse fields
-- [x] GET /:gameId/legal returns correct moves for an opening position piece
-- [x] POST /:gameId/move applies a valid move and flips turn
-- [x] POST /:gameId/move returns 422 for an illegal move
-- [x] POST /:gameId/resign sets correct winner status
-- [x] algorithm field is present on pva/ava game documents in MongoDB
-- [x] All route handlers have proper validation and error handling
-- [x] No PHASE4_COMPLETION_SUMMARY.md committed
-
-### Current State
-- All 19 Web API tests pass
-- TypeScript compiles cleanly
-- No `any` types used
-- Functions are pure with immutable returns
-
-### Next Recommended Steps
-- [ ] Phase 5: Frontend — Implement home page with new game modal
-- [ ] Phase 5: Frontend — Implement board component with SVG pieces
-- [ ] Phase 5: Frontend — Implement move selection UX
-- [ ] Phase 5: Frontend — Implement game page with status bar
-- [ ] Phase 5: Frontend — Implement AI-vs-AI spectator mode
-- [ ] Phase 5: Frontend — Implement post-game results page
+- **Route prefix**: Changed from /games to /api/game to match PRD
+- **Algorithm enum**: Fixed to ['minimax', 'astar'] as specified
+- **AI triggering**: triggerAiTurn now handles DB persistence and is called after player moves in pva mode
+- **Error handling**: AiServiceError for AI service failures returns 503
+- **Status codes**: Correct codes (409 for game over, 422 for illegal moves)
+- **Legal moves endpoint**: Now requires row and col query params for filtering
+- **Response shapes**: All responses match GameStateResponse and MoveResponse specs
+- **Server**: Uses Bun.serve() with process exit on DB connection failure
 
 ### Branch: phase-4-web-api
