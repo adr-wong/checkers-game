@@ -8,7 +8,8 @@ export async function createGame(
   ruleset: RuleSet,
   mode: 'pvp' | 'pva' | 'ava',
   difficulty?: 'easy' | 'medium' | 'hard',
-  ai_team?: 'red' | 'black'
+  ai_team?: 'red' | 'black',
+  algorithm?: 'minimax' | 'astar'
 ): Promise<IGame> {
   // Validate ruleset
   const rulesetErrors = validateRuleSet(ruleset);
@@ -16,9 +17,9 @@ export async function createGame(
     throw new Error(`Invalid ruleset: ${rulesetErrors[0]}`);
   }
 
-  // Validate mode-specific fields
-  if (mode !== 'pvp' && (!difficulty || !ai_team)) {
-    throw new Error('AI games require difficulty and ai_team');
+   // Validate mode-specific fields
+  if (mode !== 'pvp' && (!difficulty || !ai_team || !algorithm)) {
+    throw new Error('AI games require difficulty, ai_team, and algorithm');
   }
 
   // Create initial board using ruleset
@@ -26,11 +27,12 @@ export async function createGame(
     ? buildStandardLayout(ruleset)
     : buildCustomLayout(ruleset);
 
-  const game = new Game({
+   const game = new Game({
     ruleset,
     mode,
     difficulty: mode !== 'pvp' ? difficulty : undefined,
     ai_team: mode !== 'pvp' ? ai_team : undefined,
+    algorithm: mode !== 'pvp' ? algorithm : undefined,
     board: initialBoard,
     turn: 'red', // Red always moves first
     status: 'active',

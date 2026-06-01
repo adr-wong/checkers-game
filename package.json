@@ -11,5 +11,12 @@
     "test:shared": "bun test --cwd packages/shared",
     "test:ai": "bun test --cwd apps/ai-service"
   },
-  "dependencies": {}
+  "dependencies": {
+    "hono": "^4.12.23",
+    "zod": "^4.4.3"
+  },
+  "devDependencies": {
+    "@types/node": "^25.9.1",
+    "mongodb-memory-server": "^11.2.0"
+  }
 }

@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeAll, afterAll, beforeEach } from 'bun:test';
 import mongoose from 'mongoose';
 import { MongoMemoryServer } from 'mongodb-memory-server';
-import { createGame, getGameById, addMoveToHistory, buildStandardLayout, updateGame } from '../src/models/game.service';
+import { createGame, getGameById, addMoveToHistory, updateGame } from '../src/models/game.service';
 import { ENGLISH } from '@checkers/shared';
 
 // Set up MongoDB Memory Server
@@ -46,11 +46,12 @@ describe('Game Service', () => {
   });
 
   it('should create a PVA game with AI settings', async () => {
-    const game = await createGame(ENGLISH, 'pva', 'hard', 'black');
+    const game = await createGame(ENGLISH, 'pva', 'hard', 'black', 'minimax');
     
     expect(game.mode).toBe('pva');
     expect(game.difficulty).toBe('hard');
     expect(game.ai_team).toBe('black');
+    expect(game.algorithm).toBe('minimax');
   });
 
   it('should reject invalid ruleset', async () => {

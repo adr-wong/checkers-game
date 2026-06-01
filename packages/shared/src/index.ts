@@ -1,4 +1,4 @@
-export type { Team, PieceType, Cell, Move, GameOverResult } from "./types";
+export type { Team, PieceType, Cell, Move, GameOverResult, GameStatus } from "./types";
 export {
   parseBoardString,
   serializeBoardString,
