@@ -1,29 +1,30 @@
-import { test, expect, describe, beforeAll, afterAll, beforeEach, afterEach, mock } from "bun:test"
+import { test, expect, describe, beforeAll, afterAll, beforeEach, afterEach, spyOn } from "bun:test"
 import { MongoMemoryServer } from 'mongodb-memory-server'
 import mongoose from 'mongoose'
 import app from '../../src/server/app'
 import { Game } from '../../src/models/game.model'
 import { PRESET_RULESETS } from '@checkers/shared'
 
-// Mock the AI client
-mock.module('../../src/services/ai.client', () => ({
-  requestAiMove: mock(() => Promise.resolve({
-    move: { from: [2, 1], to: [3, 0], captures: [], promotion: false },
-    resultingBoard: '-r-r-r-r#r-r-r-r#-r-r-r-r#--------#--------#b-b-b-b#-b-b-b-b#b-b-b-b-',
-    algorithm: 'minimax'
-  })),
-  triggerAiTurn: mock(() => Promise.resolve({
-    move: { from: [2, 1], to: [3, 0], captures: [], promotion: false },
-    resultingBoard: '-r-r-r-r#r-r-r-r#-r-r-r-r#--------#--------#b-b-b-b#-b-b-b-b#b-b-b-b-',
-    algorithm: 'minimax'
-  })),
-  AiServiceError: class AiServiceError extends Error {
-    constructor(message: string) {
-      super(message)
-      this.name = 'AiServiceError'
-    }
-  }
-}))
+// Mock the AI service via fetch to avoid real HTTP calls
+let fetchSpy: ReturnType<typeof spyOn> | null = null
+
+beforeEach(() => {
+  fetchSpy = spyOn(globalThis, 'fetch').mockImplementation(() =>
+    Promise.resolve(new Response(JSON.stringify({
+      from: [2, 1],
+      to: [3, 0],
+      captures: [],
+      promotion: false,
+      resulting_board: '-r-r-r-r#r-r-r-r#-r-r-r-r#--------#--------#b-b-b-b#-b-b-b-b#b-b-b-b-',
+      algorithm: 'minimax'
+    }), { status: 200, headers: { 'Content-Type': 'application/json' } }))
+  )
+})
+
+afterEach(() => {
+  fetchSpy?.mockRestore()
+  fetchSpy = null
+})
 
 let mongoServer: MongoMemoryServer
 let mongoUri: string

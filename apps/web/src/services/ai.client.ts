@@ -1,8 +1,14 @@
 import { type Move, type RuleSet, parseBoardString, isGameOver } from '@checkers/shared';
 import { addMoveToHistory, updateGame } from '../models/game.service';
 
-// Configuration for AI service
 const AI_SERVICE_BASE_URL = process.env.AI_SERVICE_URL || 'http://localhost:4000';
+const AI_REQUEST_TIMEOUT_MS = parseInt(process.env.AI_REQUEST_TIMEOUT_MS || '10000', 10);
+const MAX_RETRIES = 3;
+let _retryDelayMs = 1000;
+
+export function setRetryDelayMs(ms: number) {
+  _retryDelayMs = ms;
+}
 
 export class AiServiceError extends Error {
   constructor(message: string) {
@@ -11,16 +17,14 @@ export class AiServiceError extends Error {
   }
 }
 
-/**
- * Requests an AI move from the AI service
- * @param team - The team the AI is playing as ('red' or 'black')
- * @param difficulty - The difficulty level ('easy', 'medium', or 'hard')
- * @param algorithm - The algorithm to use ('minimax' or 'astar')
- * @param board - The current board state as a string
- * @param ruleset - The ruleset being used
- * @returns Promise resolving to the AI's move and resulting board
- * @throws Error if the request fails or is invalid
- */
+function delay(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function isRetryable(status: number): boolean {
+  return status >= 500;
+}
+
 export async function requestAiMove(
   team: 'red' | 'black',
   difficulty: 'easy' | 'medium' | 'hard',
@@ -32,104 +36,130 @@ export async function requestAiMove(
   resultingBoard: string;
   algorithm: string;
 }> {
-  // Validate inputs
   if (!['red', 'black'].includes(team)) {
     throw new AiServiceError('Invalid team: must be "red" or "black"');
   }
-  
+
   if (!['easy', 'medium', 'hard'].includes(difficulty)) {
     throw new AiServiceError('Invalid difficulty: must be "easy", "medium", or "hard"');
   }
-  
+
   if (!['minimax', 'astar'].includes(algorithm)) {
     throw new AiServiceError('Invalid algorithm: must be "minimax" or "astar"');
   }
-  
+
   if (typeof board !== 'string' || board.length === 0) {
     throw new AiServiceError('Invalid board: must be a non-empty string');
   }
 
-  try {
-    const response = await fetch(`${AI_SERVICE_BASE_URL}/move`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        team,
-        difficulty,
-        algorithm,
-        board,
-        ruleset,
-      }),
-    });
+  let lastError: Error | undefined;
 
-    if (!response.ok) {
-      const errorData = await response.json().catch(() => ({}));
-      const errorMessage = errorData.error || `AI service returned status ${response.status}`;
-      throw new AiServiceError(errorMessage);
-    }
+  for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), AI_REQUEST_TIMEOUT_MS);
 
-    const data = await response.json();
+    try {
+      const response = await fetch(`${AI_SERVICE_BASE_URL}/move`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          team,
+          difficulty,
+          algorithm,
+          board,
+          ruleset,
+        }),
+        signal: controller.signal,
+      });
 
-    // Validate response structure
-    if (!data || typeof data !== 'object') {
-      throw new AiServiceError('Invalid response from AI service');
-    }
+      clearTimeout(timeoutId);
 
-    if (!Array.isArray(data.from) || data.from.length !== 2 ||
-        !Array.isArray(data.to) || data.to.length !== 2) {
-      throw new AiServiceError('Invalid move coordinates in AI response');
-    }
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        const errorMessage = errorData.error || `AI service returned status ${response.status}`;
 
-    if (!Array.isArray(data.captures)) {
-      throw new AiServiceError('Invalid captures in AI response');
-    }
+        if (isRetryable(response.status) && attempt < MAX_RETRIES) {
+          lastError = new AiServiceError(errorMessage);
+          await delay(_retryDelayMs);
+          continue;
+        }
 
-    if (typeof data.promotion !== 'boolean') {
-      throw new AiServiceError('Invalid promotion flag in AI response');
-    }
+        throw new AiServiceError(errorMessage);
+      }
 
-    if (typeof data.resulting_board !== 'string') {
-      throw new AiServiceError('Invalid resulting board in AI response');
-    }
+      const data = await response.json();
 
-    if (typeof data.algorithm !== 'string') {
-      throw new AiServiceError('Invalid algorithm in AI response');
-    }
+      if (!data || typeof data !== 'object') {
+        throw new AiServiceError('Invalid response from AI service');
+      }
 
-    return {
-      move: {
-        from: data.from,
-        to: data.to,
-        captures: data.captures,
-        promotion: data.promotion,
-      },
-      resultingBoard: data.resulting_board,
-      algorithm: data.algorithm,
-    };
-  } catch (error) {
-    if (error instanceof AiServiceError) {
-      throw error;
+      if (!Array.isArray(data.from) || data.from.length !== 2 ||
+          !Array.isArray(data.to) || data.to.length !== 2) {
+        throw new AiServiceError('Invalid move coordinates in AI response');
+      }
+
+      if (!Array.isArray(data.captures)) {
+        throw new AiServiceError('Invalid captures in AI response');
+      }
+
+      if (typeof data.promotion !== 'boolean') {
+        throw new AiServiceError('Invalid promotion flag in AI response');
+      }
+
+      if (typeof data.resulting_board !== 'string') {
+        throw new AiServiceError('Invalid resulting board in AI response');
+      }
+
+      if (typeof data.algorithm !== 'string') {
+        throw new AiServiceError('Invalid algorithm in AI response');
+      }
+
+      return {
+        move: {
+          from: data.from,
+          to: data.to,
+          captures: data.captures,
+          promotion: data.promotion,
+        },
+        resultingBoard: data.resulting_board,
+        algorithm: data.algorithm,
+      };
+    } catch (error) {
+      clearTimeout(timeoutId);
+
+      if (error instanceof AiServiceError) {
+        throw error;
+      }
+
+      if (error instanceof Error && error.name === 'AbortError') {
+        lastError = new AiServiceError('AI service request timed out');
+        if (attempt < MAX_RETRIES) {
+          await delay(_retryDelayMs);
+          continue;
+        }
+        throw lastError;
+      }
+
+      if (error instanceof Error) {
+        lastError = new AiServiceError(`Failed to request AI move: ${error.message}`);
+      } else {
+        lastError = new AiServiceError('Failed to request AI move: unknown error');
+      }
+
+      if (attempt < MAX_RETRIES) {
+        await delay(_retryDelayMs);
+        continue;
+      }
+
+      throw lastError;
     }
-    if (error instanceof Error) {
-      throw new AiServiceError(`Failed to request AI move: ${error.message}`);
-    }
-    throw new AiServiceError('Failed to request AI move: unknown error');
   }
+
+  throw lastError || new AiServiceError('Failed to request AI move: unknown error');
 }
 
-/**
- * Triggers the AI's turn in a game
- * @param gameId - The ID of the game
- * @param team - The team the AI is playing as
- * @param difficulty - The difficulty level
- * @param algorithm - The algorithm to use
- * @param currentBoard - The current board state
- * @param ruleset - The ruleset being used
- * @returns Promise resolving to the updated game state
- * @throws AiServiceError if the AI move cannot be processed
- */
 export async function triggerAiTurn(
   gameId: string,
   team: 'red' | 'black',
@@ -143,7 +173,6 @@ export async function triggerAiTurn(
   nextTurn: 'red' | 'black';
 }> {
   try {
-    // Request AI move
     const { move, resultingBoard } = await requestAiMove(
       team,
       difficulty,
@@ -152,17 +181,14 @@ export async function triggerAiTurn(
       ruleset
     );
 
-    // Add move to history
     const updatedGame = await addMoveToHistory(gameId, { ...move, ruleset }, resultingBoard);
 
     if (!updatedGame) {
       throw new AiServiceError('Failed to add AI move to history');
     }
 
-    // Determine next turn
     const nextTurn = team === 'red' ? 'black' : 'red';
 
-    // Check if game is over
     const board = parseBoardString(resultingBoard, ruleset);
     const gameOverResult = isGameOver(board, ruleset);
 

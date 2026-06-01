@@ -67,6 +67,23 @@ const PROMOTION =
   "----#---"; // row 7: empty dark at [7,4] (promotion square for red)
 
 /**
+ * Simplified mid-game position (4 pieces per side).
+ * Used in hard-difficulty tests where the full opening board is too slow at depth 9.
+ * Red at rows 3-4, Black at rows 5-6.
+ * // r at [3,0] [3,4] [4,1] [4,5]
+ * // b at [5,2] [5,6] [6,1] [6,5]
+ */
+const MID_GAME =
+  "--------" + // row 0
+  "--------" + // row 1
+  "--------" + // row 2
+  "r---r---" + // row 3: r at [3,0] and [3,4]
+  "-r---r--" + // row 4: r at [4,1] and [4,5]
+  "--b---b-" + // row 5: b at [5,2] and [5,6]
+  "-b---b--" + // row 6: b at [6,1] and [6,5]
+  "--------"; // row 7
+
+/**
  * No moves for red.
  * Only black pieces remain. Red has no pieces.
  * // b at [0,1] index=1 (dark square, row 0 col 1)
@@ -375,14 +392,14 @@ describe("POST /move — minimax algorithm", () => {
       team: "red",
       difficulty: "hard",
       algorithm: "minimax",
-      board: OPENING_8X8,
+      board: MID_GAME,
       ruleset: ENGLISH_RULESET,
     });
     const res2 = await postMove({
       team: "red",
       difficulty: "hard",
       algorithm: "minimax",
-      board: OPENING_8X8,
+      board: MID_GAME,
       ruleset: ENGLISH_RULESET,
     });
     const body1 = await res1.json();
@@ -456,7 +473,7 @@ describe("POST /move — astar algorithm", () => {
         team: "red",
         difficulty,
         algorithm: "astar",
-        board: OPENING_8X8,
+        board: MID_GAME,
         ruleset: ENGLISH_RULESET,
       });
       expect(res.status).toBe(200);
@@ -563,7 +580,7 @@ describe("POST /move — response shape", () => {
       team: "red",
       difficulty: "hard",
       algorithm: "minimax",
-      board: OPENING_8X8,
+      board: MID_GAME,
       ruleset: ENGLISH_RULESET,
     });
     expect(res.status).toBe(200);
