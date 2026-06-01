@@ -38,7 +38,7 @@ import { applyNoise } from "./noise";
 const MAX_DEPTH: Record<Difficulty, number> = {
   easy: 2,
   medium: 5,
-  hard: 7,
+  hard: 9,
 };
 
 /**

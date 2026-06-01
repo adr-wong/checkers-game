@@ -1,7 +1,7 @@
 import { type Cell, type Team, type Move, type GameOverResult } from "./types";
 import { type RuleSet, getPromotionRow, isDarkSquare, inBounds } from "./ruleset";
 
-const VALID_CHARS = /^[#-rRbB]+$/;
+const VALID_CHARS = /^[#\-rRbB]+$/;
 const CHAR_TO_TEAM: Record<string, Team> = {
   r: "red",
   R: "red",
@@ -438,10 +438,6 @@ function isGameOver(
   const redMoves = getLegalMoves(board, ruleset, "red");
   const blackMoves = getLegalMoves(board, ruleset, "black");
 
-  if (redPieces + blackPieces < 5 && redMoves.length === 0 && blackMoves.length === 0) {
-    return { winner: "draw" };
-  }
-
   if (redMoves.length === 0 && blackMoves.length === 0) {
     return { winner: "draw" };
   }
@@ -455,5 +451,4 @@ export {
   getLegalMoves,
   applyMove,
   isGameOver,
-  isDarkSquare,
 };

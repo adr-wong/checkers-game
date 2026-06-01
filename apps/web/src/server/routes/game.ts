@@ -1,9 +1,14 @@
 import { Hono } from 'hono'
 import { z } from 'zod'
+import mongoose from 'mongoose'
 import { createGame, getGameById, addMoveToHistory, updateGame } from '../../models/game.service'
 import { triggerAiTurn, AiServiceError } from '../../services/ai.client'
 import { type RuleSet, type Move, type GameStatus, PRESET_RULESETS } from '@checkers/shared'
 import { getLegalMoves, applyMove, isGameOver, parseBoardString, serializeBoardString } from '@checkers/shared'
+
+function isValidGameId(gameId: string): boolean {
+  return mongoose.Types.ObjectId.isValid(gameId)
+}
 
 // Response types
 type GameStateResponse = {
@@ -136,8 +141,7 @@ gameRouter.get('/:gameId/state', async (c) => {
   try {
     const gameId = c.req.param('gameId')
     
-    // Validate gameId format first
-    if (!gameId || gameId.length !== 24) {
+    if (!gameId || !isValidGameId(gameId)) {
       return c.json({ error: 'Invalid game ID format' }, 400)
     }
     
@@ -162,8 +166,7 @@ gameRouter.get('/:gameId/legal', async (c) => {
   try {
     const gameId = c.req.param('gameId')
 
-    // Validate gameId format
-    if (!gameId || gameId.length !== 24) {
+    if (!gameId || !isValidGameId(gameId)) {
       return c.json({ error: 'Invalid game ID format' }, 400)
     }
 
@@ -222,6 +225,11 @@ gameRouter.get('/:gameId/legal', async (c) => {
 gameRouter.post('/:gameId/move', async (c) => {
   try {
     const gameId = c.req.param('gameId')
+
+    if (!gameId || !isValidGameId(gameId)) {
+      return c.json({ error: 'Invalid game ID format' }, 400)
+    }
+
     const game = await getGameById(gameId)
     
     if (!game) {
@@ -359,6 +367,11 @@ gameRouter.post('/:gameId/move', async (c) => {
 gameRouter.post('/:gameId/resign', async (c) => {
   try {
     const gameId = c.req.param('gameId')
+
+    if (!gameId || !isValidGameId(gameId)) {
+      return c.json({ error: 'Invalid game ID format' }, 400)
+    }
+
     const game = await getGameById(gameId)
     
     if (!game) {
