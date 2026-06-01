@@ -19,6 +19,16 @@
 - [x] Read CORS origin from ALLOWED_ORIGIN env var
 - [x] Updated tests to match new response shapes and requirements
 - [x] Removed duplicate buildStandardLayout import from game.model.test.ts
+- [x] Added zod to package.json dependencies
+- [x] Fixed buildStandardLayout import to use @checkers/shared in game.service.test.ts
+- [x] Read AI_SERVICE_BASE_URL from process.env.AI_SERVICE_URL with fallback
+- [x] Implemented ava first-move trigger after game creation
+- [x] Added algorithm parameter to pva createGame call in game.service.test.ts
+- [x] Fixed mock RuleSet in ai.client.test.ts to use ENGLISH from @checkers/shared
+- [x] Removed callback from Bun.serve() call
+- [x] Added 409 check at top of move route for pva + AI team turn
+- [x] Removed .ts extension from import in ai.client.ts
+- [x] Added requestAiMove mock to game.api.test.ts
 
 ### Files Changed (Phase 4)
 - `apps/web/src/server/app.ts` — Changed route prefix to /api/game
@@ -35,7 +45,7 @@
 - `packages/shared/src/index.ts` — Exported GameStatus
 
 ### Test Results
-- **bun test apps/web/tests/** → 30 pass, 0 fail, 83 expect() calls (3 test files combined)
+- **bun test apps/web/tests/** → 33 pass, 0 fail, 105 expect() calls (3 test files combined)
 
 ### Key Implementation Details
 - **Route prefix**: Changed from /games to /api/game to match PRD
@@ -48,3 +58,63 @@
 - **Server**: Uses Bun.serve() with process exit on DB connection failure
 
 ### Branch: phase-4-web-api
+
+---
+
+## Phase 5 Progress: Frontend (In Progress)
+
+### Tasks Completed
+- [x] Scaffolded TanStack Start in apps/web (Vite-based, port 3001)
+- [x] Created SVG piece components (Piece.tsx)
+- [x] Created API client module (api.ts)
+- [x] Created Board component with grid and highlights (Board.tsx, Board.css)
+- [x] Implemented Home page with new game modal (index.tsx)
+- [x] Implemented Game page with board, status bar, and move selection (game.$gameId.tsx)
+- [x] Implemented Post-game results page (game.$gameId.end.tsx)
+- [x] Implemented AI turn polling (1.5s interval)
+- [x] Implemented move selection UX (click piece → highlights → click destination)
+
+### Files Created (Phase 5)
+- `apps/web/vite.config.ts` — Vite config with TanStack Start plugin
+- `apps/web/src/router.tsx` — Router factory
+- `apps/web/src/routes/__root.tsx` — Root layout
+- `apps/web/src/routes/index.tsx` — Home page with new game modal
+- `apps/web/src/routes/game.$gameId.tsx` — Game page with board and controls
+- `apps/web/src/routes/game.$gameId.end.tsx` — Post-game results page
+- `apps/web/src/styles/global.css` — Global styles (flat white/black)
+- `apps/web/src/components/Piece.tsx` — SVG piece components
+- `apps/web/src/components/Board.tsx` — Board grid component
+- `apps/web/src/components/Board.css` — Board styles
+- `apps/web/src/lib/api.ts` — API client functions
+
+### Files Modified (Phase 5)
+- `apps/web/package.json` — Added TanStack, React, Vite deps and scripts
+- `apps/web/tsconfig.json` — Added path aliases
+
+### Design Notes
+- FLAT white background, black outlines (no colors yet)
+- Minimal styling for functionality first
+- Ready for design polish in Phase 7
+
+### Remaining Tasks
+- [ ] AI-vs-AI spectator mode (pause/resume, speed control)
+- [ ] Integration testing with running services
+- [ ] Fix any TypeScript/build errors
+
+### How to Run
+```bash
+# Terminal 1: Frontend dev server (port 3001)
+cd apps/web && bun run dev
+
+# Terminal 2: Hono API server (port 3000)
+cd apps/web && bun run index.ts
+
+# Terminal 3: AI service (port 4000)
+cd apps/ai-service && bun run index.ts
+
+# Terminal 4: MongoDB
+mongod or docker compose up mongodb
+```
+
+### Current Branch
+- Main work on existing branch (Phase 5 frontend additions)

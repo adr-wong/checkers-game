@@ -1,0 +1,50 @@
+.board {
+  display: grid;
+  width: min(480px, 100%);
+  aspect-ratio: 1;
+  border: 2px solid #000;
+}
+
+.cell {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid #000;
+  cursor: pointer;
+}
+
+.cell--dark {
+  background-color: #f0f0f0;
+}
+
+.cell--light {
+  background-color: #fff;
+}
+
+.cell--selected {
+  outline: 3px solid #e6c300;
+  outline-offset: -3px;
+  z-index: 1;
+}
+
+.cell--legal {
+  background-color: #c8e6c9;
+}
+
+.cell--last {
+  background-color: #bbdefb;
+}
+
+.cell--disabled {
+  cursor: default;
+}
+
+.legal-dot {
+  position: absolute;
+  width: 30%;
+  height: 30%;
+  border-radius: 50%;
+  background-color: #66bb6a;
+  pointer-events: none;
+}

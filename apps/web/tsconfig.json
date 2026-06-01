@@ -1,6 +1,9 @@
 {
   "compilerOptions": {
     "types": ["node"],
+    "paths": {
+      "~/*": ["./src/*"]
+    },
     // Environment setup & latest features
     "lib": ["ESNext", "DOM"],
     "target": "ESNext",
