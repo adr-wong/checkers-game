@@ -100,9 +100,9 @@ function GameComponent() {
   }, [state, gameId, navigate]);
 
   const isAITurn =
-    state?.mode !== "pvp" &&
-    state?.ai_team === state?.turn &&
-    state?.status === "active";
+    state?.status === "active" &&
+    (state?.mode === "ava" ||
+      (state?.mode === "pva" && state?.ai_team === state?.turn));
 
   useEffect(() => {
     if (isAITurn && !pending) {

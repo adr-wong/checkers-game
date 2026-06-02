@@ -33,7 +33,7 @@ export function Board({
     selectedPosition?.[0] === row && selectedPosition?.[1] === col
 
   const isLegalMove = (row: number, col: number) =>
-    legalMoves?.some(([r, c]) => r === row && c === col) ?? false
+    legalMoves?.some((m) => m.to[0] === row && m.to[1] === col) ?? false
 
   const isLastMoveCell = (row: number, col: number) =>
     lastMove &&

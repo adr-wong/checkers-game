@@ -106,17 +106,27 @@ function HomeComponent() {
 
   async function handleStart() {
     setLoading(true);
+    console.log("🚀 Starting game creation with:", { mode, boardSize, difficulty, algorithm, aiTeam });
+
     try {
       const req: CreateGameRequest = {
-        ruleset: { preset: boardSize === 8 ? "international8" : "international10" },
+        ruleset: { preset: boardSize === 8 ? "english" : "international" },
         mode,
-        ...(mode !== "pvp" && { difficulty, algorithm }),
-        ...(mode === "pva" && { ai_team: aiTeam }),
+        ...(mode !== "pvp" && { difficulty, algorithm, ai_team: aiTeam }),
       };
-      const { gameId } = await createGame(req);
-      navigate({ to: "/game/$gameId", params: { gameId } });
+
+      console.log("📤 Sending request:", req);
+
+      const result = await createGame(req);
+      console.log("✅ Game created successfully:", result);
+
+      navigate({ 
+        to: "/game/$gameId", 
+        params: { gameId: result.gameId } 
+      });
     } catch (err: any) {
-      alert(err.message ?? "Failed to create game");
+      console.error("❌ Game creation failed:", err);
+      alert(`Failed to create game: ${err.message || err}`);
     } finally {
       setLoading(false);
     }
@@ -127,7 +137,12 @@ function HomeComponent() {
   return (
     <div style={styles.page}>
       <h1 style={styles.heading}>Checkers Game</h1>
-      <button style={styles.button} onClick={() => setModalOpen(true)}>
+      <button   style={styles.button}
+                onClick={() => {
+                console.log("=== NEW GAME BUTTON CLICKED ===");
+                console.log("Current state:", { modalOpen, mode, boardSize });
+                setModalOpen(true);
+              }}>
         New Game
       </button>
 

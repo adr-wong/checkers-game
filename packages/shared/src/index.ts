@@ -5,6 +5,6 @@ export {
   getLegalMoves,
   applyMove,
   isGameOver,
-  isDarkSquare,
 } from "./board";
 export * from "./ruleset";
+export { buildStandardLayout } from "./ruleset";

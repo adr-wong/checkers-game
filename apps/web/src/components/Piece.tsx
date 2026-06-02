@@ -29,10 +29,11 @@ export function Piece({ color, type, size = 40 }: PieceProps) {
   const r = size / 2 - 2
   const cx = size / 2
   const cy = size / 2
+  const fill = color === 'red' ? '#e53935' : '#212121'
 
   return (
     <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`}>
-      <circle cx={cx} cy={cy} r={r} fill="#fff" stroke="#000" strokeWidth={2} />
+      <circle cx={cx} cy={cy} r={r} fill={fill} stroke="#000" strokeWidth={2} />
       {type === 'king' && <Crown cx={cx} cy={cy - 1} />}
     </svg>
   )

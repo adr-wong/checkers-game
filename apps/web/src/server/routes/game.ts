@@ -58,6 +58,35 @@ function buildGameStateResponse(game: {
   }
 }
 
+async function maybeTriggerNextAiMove(game: {
+  _id: string | { toString(): string }
+  mode: 'pvp' | 'pva' | 'ava'
+  status: string
+  move_count: number
+  turn: 'red' | 'black'
+  difficulty?: 'easy' | 'medium' | 'hard'
+  algorithm?: 'minimax' | 'astar'
+  board: string
+  ruleset: RuleSet
+}) {
+  if (game.mode !== 'ava' || game.status !== 'active' || game.move_count === 0) {
+    return
+  }
+
+  try {
+    await triggerAiTurn(
+      typeof game._id === 'string' ? game._id : game._id.toString(),
+      game.turn,
+      game.difficulty as 'easy' | 'medium' | 'hard',
+      game.algorithm as 'minimax' | 'astar',
+      game.board,
+      game.ruleset
+    )
+  } catch (error) {
+    console.error('Failed to trigger next AI move:', error)
+  }
+}
+
 // Create game router
 const gameRouter = new Hono()
 
@@ -108,7 +137,7 @@ gameRouter.post('/', async (c) => {
     const game = await createGame(fullRuleset, mode, difficulty, ai_team, algorithm)
 
     // For ava mode, trigger the first AI move for red team (red always moves first)
-    if (mode === 'ava' && ai_team === 'red') {
+    if (mode === 'ava') {
       try {
         await triggerAiTurn(
           game._id.toString(),
@@ -150,6 +179,8 @@ gameRouter.get('/:gameId/state', async (c) => {
     if (!game) {
       return c.json({ error: 'Game not found' }, 404)
     }
+    
+    await maybeTriggerNextAiMove(game)
     
     return c.json(buildGameStateResponse(game))
   } catch (error) {
@@ -244,6 +275,11 @@ gameRouter.post('/:gameId/move', async (c) => {
     if (game.mode === 'pva' && game.ai_team === game.turn) {
       return c.json({ error: "It is the AI's turn" }, 409)
     }
+
+    // For ava mode, no human moves are allowed
+    if (game.mode === 'ava') {
+      return c.json({ error: 'AI vs AI games cannot be played manually' }, 403)
+    }
     
     const body = await c.req.json()
     const validation = moveSchema.safeParse(body)
@@ -331,6 +367,8 @@ gameRouter.post('/:gameId/move', async (c) => {
 
         // Get updated game state after AI move
         const gameAfterAi = await getGameById(gameId)
+
+        await maybeTriggerNextAiMove(gameAfterAi || updatedGame)
 
         return c.json({
           move: playerMoveResponse,
