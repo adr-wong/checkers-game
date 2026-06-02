@@ -22,6 +22,13 @@ type GameStateResponse = {
   ai_team?: 'red' | 'black'
   algorithm?: 'minimax' | 'astar'
   move_count: number
+  history: Array<{
+    from: [number, number]
+    to: [number, number]
+    captures: [number, number][]
+    promotion: boolean
+    timestamp: Date
+  }>
 }
 
 type MoveResponse = {
@@ -43,6 +50,13 @@ function buildGameStateResponse(game: {
   ai_team?: 'red' | 'black'
   algorithm?: 'minimax' | 'astar'
   move_count: number
+  history: Array<{
+    from: [number, number]
+    to: [number, number]
+    captures: [number, number][]
+    promotion: boolean
+    timestamp: Date
+  }>
 }): GameStateResponse {
   return {
     gameId: typeof game._id === 'string' ? game._id : game._id.toString(),
@@ -54,9 +68,18 @@ function buildGameStateResponse(game: {
     difficulty: game.difficulty,
     ai_team: game.ai_team,
     algorithm: game.algorithm,
-    move_count: game.move_count
+    move_count: game.move_count,
+    history: game.history.map(({ from, to, captures, promotion, timestamp }) => ({
+      from, to, captures, promotion, timestamp
+    }))
   }
 }
+
+// Lock to prevent concurrent AI moves for the same game
+const aiMoveLocks = new Set<string>()
+// Cooldown after AI failure — prevent hammering the AI service when it's struggling
+const AI_FAILURE_COOLDOWN_MS = 5000
+const aiFailureTimestamps = new Map<string, number>()
 
 async function maybeTriggerNextAiMove(game: {
   _id: string | { toString(): string }
@@ -69,21 +92,58 @@ async function maybeTriggerNextAiMove(game: {
   board: string
   ruleset: RuleSet
 }) {
+  const gameId = typeof game._id === 'string' ? game._id : game._id.toString()
+
   if (game.mode !== 'ava' || game.status !== 'active' || game.move_count === 0) {
     return
   }
 
+  // Skip if an AI move is already in progress for this game
+  if (aiMoveLocks.has(gameId)) {
+    return
+  }
+
+  // Skip if recently failed — wait for cooldown
+  const lastFailure = aiFailureTimestamps.get(gameId)
+  if (lastFailure && Date.now() - lastFailure < AI_FAILURE_COOLDOWN_MS) {
+    return
+  }
+
+  aiMoveLocks.add(gameId)
   try {
+    // Re-fetch the latest game state to avoid stale data
+    const latestGame = await getGameById(gameId)
+    if (!latestGame || latestGame.status !== 'active' || latestGame.move_count === 0) {
+      return
+    }
+
     await triggerAiTurn(
-      typeof game._id === 'string' ? game._id : game._id.toString(),
-      game.turn,
-      game.difficulty as 'easy' | 'medium' | 'hard',
-      game.algorithm as 'minimax' | 'astar',
-      game.board,
-      game.ruleset
+      gameId,
+      latestGame.turn,
+      latestGame.difficulty as 'easy' | 'medium' | 'hard',
+      latestGame.algorithm as 'minimax' | 'astar',
+      latestGame.board,
+      latestGame.ruleset
     )
+    // Success — clear any failure timestamp
+    aiFailureTimestamps.delete(gameId)
   } catch (error) {
+    const message = error instanceof Error ? error.message : String(error)
+    if (message.includes('No legal moves available')) {
+      const board = parseBoardString(game.board, game.ruleset)
+      const gameOverResult = isGameOver(board, game.ruleset)
+      if (gameOverResult) {
+        await updateGame(gameId, {
+          status: gameOverResult.winner === 'draw' ? 'draw' : `${gameOverResult.winner}_wins`
+        })
+        return
+      }
+    }
     console.error('Failed to trigger next AI move:', error)
+    // Record failure timestamp for cooldown
+    aiFailureTimestamps.set(gameId, Date.now())
+  } finally {
+    aiMoveLocks.delete(gameId)
   }
 }
 
@@ -180,7 +240,10 @@ gameRouter.get('/:gameId/state', async (c) => {
       return c.json({ error: 'Game not found' }, 404)
     }
     
-    await maybeTriggerNextAiMove(game)
+    // Fire-and-forget: trigger next AI move in background, don't block the response
+    maybeTriggerNextAiMove(game).catch((err) => {
+      console.error('Background AI move failed:', err)
+    })
     
     return c.json(buildGameStateResponse(game))
   } catch (error) {

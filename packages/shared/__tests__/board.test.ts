@@ -111,13 +111,25 @@ describe("applyMove", () => {
 describe("isGameOver", () => {
   test("game in progress returns null", () => {
     const board = [
-      [{ piece: null }, { piece: { team: "red", type: "normal" } }, { piece: null }, { piece: null }],
       [{ piece: null }, { piece: null }, { piece: null }, { piece: null }],
-      [{ piece: null }, { piece: null }, { piece: null }, { piece: null }],
+      [{ piece: { team: "red", type: "normal" } }, { piece: null }, { piece: null }, { piece: null }],
       [{ piece: null }, { piece: { team: "black", type: "normal" } }, { piece: null }, { piece: null }],
+      [{ piece: null }, { piece: null }, { piece: null }, { piece: null }],
     ] as Cell[][];
     const result = isGameOver(board, { ...ENGLISH, boardSize: 4 } as RuleSet);
     expect(result).toBeNull();
+  });
+
+  test("one team has pieces but no legal moves - other wins", () => {
+    // Red at [1,2] can move down; black at [0,1] is at top edge with no forward moves or captures
+    const board = [
+      [{ piece: null }, { piece: { team: "black", type: "normal" } }, { piece: null }, { piece: null }],
+      [{ piece: null }, { piece: null }, { piece: { team: "red", type: "normal" } }, { piece: null }],
+      [{ piece: null }, { piece: null }, { piece: null }, { piece: null }],
+      [{ piece: null }, { piece: null }, { piece: null }, { piece: null }],
+    ] as Cell[][];
+    const result = isGameOver(board, { ...ENGLISH, boardSize: 4 } as RuleSet);
+    expect(result).toEqual({ winner: "red" });
   });
 
   test("one team has all pieces captured - other wins", () => {
@@ -233,6 +245,40 @@ describe("promotion scenarios", () => {
     const result = applyMove(board, move, { ...ENGLISH, boardSize: 4 } as RuleSet);
     expect(result[0][1].piece?.type).toBe("king");
     expect(result[1][0].piece).toBeNull();
+  });
+
+  test("non-capture move to back rank promotes piece", () => {
+    // Red piece at row 2 walks to row 3 (back rank) without capturing
+    const board = [
+      [{ piece: null }, { piece: null }, { piece: null }, { piece: null }],
+      [{ piece: null }, { piece: null }, { piece: null }, { piece: null }],
+      [{ piece: null }, { piece: { team: "red", type: "normal" } }, { piece: null }, { piece: null }],
+      [{ piece: null }, { piece: null }, { piece: null }, { piece: null }],
+    ] as Cell[][];
+    const moves = getLegalMoves(board, { ...ENGLISH, boardSize: 4 } as RuleSet, "red");
+    const promotionMoves = moves.filter(m => m.promotion);
+    expect(promotionMoves.length).toBe(2);
+
+    const result = applyMove(board, promotionMoves[0], { ...ENGLISH, boardSize: 4 } as RuleSet);
+    expect(result[promotionMoves[0].to[0]][promotionMoves[0].to[1]].piece?.type).toBe("king");
+  });
+
+  test("red piece promotes to king when reaching back rank despite black king on board", () => {
+    // Red at [2,1] (dark square) walks to [3,0] or [3,2]; black king at [0,1] (dark square)
+    const board = [
+      [{ piece: null }, { piece: { team: "black", type: "king" } }, { piece: null }, { piece: null }],
+      [{ piece: null }, { piece: null }, { piece: null }, { piece: null }],
+      [{ piece: null }, { piece: { team: "red", type: "normal" } }, { piece: null }, { piece: null }],
+      [{ piece: null }, { piece: null }, { piece: null }, { piece: null }],
+    ] as Cell[][];
+    const moves = getLegalMoves(board, { ...ENGLISH, boardSize: 4 } as RuleSet, "red");
+    const promotionMoves = moves.filter(m => m.promotion);
+    expect(promotionMoves.length).toBe(2);
+    expect(promotionMoves.every(m => m.promotion)).toBe(true);
+
+    const result = applyMove(board, promotionMoves[0], { ...ENGLISH, boardSize: 4 } as RuleSet);
+    expect(result[promotionMoves[0].to[0]][promotionMoves[0].to[1]].piece?.type).toBe("king");
+    expect(result[2][1].piece).toBeNull();
   });
 });
 

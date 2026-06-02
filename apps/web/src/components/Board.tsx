@@ -16,6 +16,9 @@ interface BoardProps {
   lastMove?: { from: [number, number]; to: [number, number] } | null
   onCellClick?: (row: number, col: number) => void
   disabled?: boolean
+  boardRef?: React.RefObject<HTMLDivElement | null>
+  animatingFrom?: [number, number] | null
+  capturedPositions?: Array<[number, number]>
 }
 
 export function Board({
@@ -26,6 +29,9 @@ export function Board({
   lastMove,
   onCellClick,
   disabled,
+  boardRef,
+  animatingFrom,
+  capturedPositions,
 }: BoardProps) {
   const isDarkCell = (row: number, col: number) => (row + col) % 2 === 1
 
@@ -42,6 +48,7 @@ export function Board({
 
   return (
     <div
+      ref={boardRef}
       className="board"
       style={{
         gridTemplateColumns: `repeat(${boardSize}, 1fr)`,
@@ -54,6 +61,10 @@ export function Board({
           const selected = isSelected(rowIdx, colIdx)
           const legal = isLegalMove(rowIdx, colIdx)
           const last = isLastMoveCell(rowIdx, colIdx)
+          const isAnimatingFromCell =
+            animatingFrom?.[0] === rowIdx && animatingFrom?.[1] === colIdx
+          const isCapturedCell =
+            capturedPositions?.some(([r, c]) => r === rowIdx && c === colIdx) ?? false
 
           return (
             <div
@@ -70,7 +81,7 @@ export function Board({
                 .join(' ')}
               onClick={() => !disabled && onCellClick?.(rowIdx, colIdx)}
             >
-              {cell.piece && (
+              {cell.piece && !isAnimatingFromCell && !isCapturedCell && (
                 <Piece
                   color={cell.piece.team}
                   type={cell.piece.type}

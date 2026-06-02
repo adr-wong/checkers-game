@@ -80,7 +80,7 @@ function GameEndComponent() {
           {playAgainLoading ? "Creating..." : "Play Again"}
         </button>
         <button style={styles.btn} onClick={() => navigate({ to: "/" })}>
-          New Game
+          Home
         </button>
       </div>
     </div>

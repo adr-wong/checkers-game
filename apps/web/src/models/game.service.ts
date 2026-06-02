@@ -56,7 +56,7 @@ export async function updateGame(
   return await Game.findByIdAndUpdate(
     gameId,
     { ...updates, updated_at: new Date() },
-    { new: true }
+    { returnDocument: 'after' }
   );
 }
 
@@ -91,7 +91,7 @@ export async function addMoveToHistory(
         updated_at: new Date()
       }
     },
-    { new: true }
+    { returnDocument: 'after' }
   );
 }
 

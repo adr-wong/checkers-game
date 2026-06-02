@@ -23,6 +23,13 @@ export interface GameState {
   ai_team?: Team
   algorithm?: 'minimax' | 'astar'
   move_count: number
+  history: Array<{
+    from: [number, number]
+    to: [number, number]
+    captures: [number, number][]
+    promotion: boolean
+    timestamp: string
+  }>
 }
 
 export interface MoveResponse {
