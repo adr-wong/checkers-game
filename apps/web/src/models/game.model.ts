@@ -1,5 +1,5 @@
 import mongoose, { Schema, Document } from 'mongoose';
-import { validateRuleSet, type RuleSet } from '@checkers/shared';
+import { validateRuleSet, type RuleSet, type GameStyleConfig, DEFAULT_STYLE_CONFIG } from '@checkers/shared';
 
 // Define the Move schema for history entries
 const MoveSchema = new Schema({
@@ -75,6 +75,11 @@ const GameSchema = new Schema({
     required: true,
     default: []
   },
+  styleConfig: {
+    type: Schema.Types.Mixed,
+    required: true,
+    default: DEFAULT_STYLE_CONFIG
+  },
   created_at: {
     type: Date,
     required: true,
@@ -117,6 +122,7 @@ export interface IGame extends Document {
     board_after: string;
     timestamp: Date;
   }>;
+  styleConfig: GameStyleConfig;
   created_at: Date;
   updated_at: Date;
 }

@@ -19,6 +19,7 @@ interface BoardProps {
   boardRef?: React.RefObject<HTMLDivElement | null>
   animatingFrom?: [number, number] | null
   capturedPositions?: Array<[number, number]>
+  pieceStyleId?: string
 }
 
 export function Board({
@@ -32,6 +33,7 @@ export function Board({
   boardRef,
   animatingFrom,
   capturedPositions,
+  pieceStyleId = 'classic',
 }: BoardProps) {
   const isDarkCell = (row: number, col: number) => (row + col) % 2 === 1
 
@@ -85,6 +87,7 @@ export function Board({
                 <Piece
                   color={cell.piece.team}
                   type={cell.piece.type}
+                  styleId={pieceStyleId}
                 />
               )}
               {legal && !cell.piece && <div className="legal-dot" />}

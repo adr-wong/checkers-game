@@ -3,7 +3,7 @@ import { z } from 'zod'
 import mongoose from 'mongoose'
 import { createGame, getGameById, addMoveToHistory, updateGame } from '../../models/game.service'
 import { triggerAiTurn, AiServiceError } from '../../services/ai.client'
-import { type RuleSet, type Move, type GameStatus, PRESET_RULESETS } from '@checkers/shared'
+import { type RuleSet, type Move, type GameStatus, type GameStyleConfig, DEFAULT_STYLE_CONFIG, PRESET_RULESETS } from '@checkers/shared'
 import { getLegalMoves, applyMove, isGameOver, parseBoardString, serializeBoardString } from '@checkers/shared'
 
 function isValidGameId(gameId: string): boolean {
@@ -29,6 +29,7 @@ type GameStateResponse = {
     promotion: boolean
     timestamp: Date
   }>
+  styleConfig: GameStyleConfig
 }
 
 type MoveResponse = {
@@ -57,6 +58,7 @@ function buildGameStateResponse(game: {
     promotion: boolean
     timestamp: Date
   }>
+  styleConfig: GameStyleConfig
 }): GameStateResponse {
   return {
     gameId: typeof game._id === 'string' ? game._id : game._id.toString(),
@@ -71,7 +73,8 @@ function buildGameStateResponse(game: {
     move_count: game.move_count,
     history: game.history.map(({ from, to, captures, promotion, timestamp }) => ({
       from, to, captures, promotion, timestamp
-    }))
+    })),
+    styleConfig: game.styleConfig
   }
 }
 
@@ -159,7 +162,11 @@ const createGameSchema = z.object({
   mode: z.enum(['pvp', 'pva', 'ava']),
   difficulty: z.enum(['easy', 'medium', 'hard']).optional(),
   ai_team: z.enum(['red', 'black']).optional(),
-  algorithm: z.enum(['minimax', 'astar']).optional()
+  algorithm: z.enum(['minimax', 'astar']).optional(),
+  styleConfig: z.object({
+    pieceStyleId: z.string(),
+    boardStyleId: z.string()
+  }).optional()
 })
 
 const moveSchema = z.object({
@@ -184,7 +191,7 @@ gameRouter.post('/', async (c) => {
       return c.json({ error: 'Invalid request body', details: validation.error.errors }, 400)
     }
     
-    const { ruleset, mode, difficulty, ai_team, algorithm } = validation.data
+    const { ruleset, mode, difficulty, ai_team, algorithm, styleConfig } = validation.data
 
     // Convert preset to full ruleset if needed
     let fullRuleset: RuleSet
@@ -194,7 +201,7 @@ gameRouter.post('/', async (c) => {
       fullRuleset = ruleset
     }
 
-    const game = await createGame(fullRuleset, mode, difficulty, ai_team, algorithm)
+    const game = await createGame(fullRuleset, mode, difficulty, ai_team, algorithm, styleConfig ?? DEFAULT_STYLE_CONFIG)
 
     // For ava mode, trigger the first AI move for red team (red always moves first)
     if (mode === 'ava') {

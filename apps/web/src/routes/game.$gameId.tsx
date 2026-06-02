@@ -590,6 +590,7 @@ function GameComponent() {
           boardRef={boardRef}
           animatingFrom={animatingPiece?.from ?? null}
           capturedPositions={capturedPositions}
+          pieceStyleId={state.styleConfig?.pieceStyleId}
         />
 
         <AnimationOverlay
@@ -597,6 +598,7 @@ function GameComponent() {
           boardSize={boardSize}
           animatingPiece={animatingPiece}
           progress={animProgress}
+          pieceStyleId={state.styleConfig?.pieceStyleId}
         />
       </div>
 

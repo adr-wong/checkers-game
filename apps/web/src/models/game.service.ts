@@ -1,5 +1,5 @@
 import { Game, IGame } from './game.model';
-import { validateRuleSet, type RuleSet, type Move, buildStandardLayout } from '@checkers/shared';
+import { validateRuleSet, type RuleSet, type Move, type GameStyleConfig, DEFAULT_STYLE_CONFIG, buildStandardLayout } from '@checkers/shared';
 
 // buildStandardLayout is imported from @checkers/shared
 
@@ -9,7 +9,8 @@ export async function createGame(
   mode: 'pvp' | 'pva' | 'ava',
   difficulty?: 'easy' | 'medium' | 'hard',
   ai_team?: 'red' | 'black',
-  algorithm?: 'minimax' | 'astar'
+  algorithm?: 'minimax' | 'astar',
+  styleConfig?: GameStyleConfig
 ): Promise<IGame> {
   // Validate ruleset
   const rulesetErrors = validateRuleSet(ruleset);
@@ -37,7 +38,8 @@ export async function createGame(
     turn: 'red', // Red always moves first
     status: 'active',
     move_count: 0,
-    history: []
+    history: [],
+    styleConfig: styleConfig ?? DEFAULT_STYLE_CONFIG
   });
 
   return await game.save();

@@ -13,6 +13,7 @@ interface AnimationOverlayProps {
   boardSize: 8 | 10
   animatingPiece: AnimatingPiece | null
   progress: number
+  pieceStyleId?: string
 }
 
 function getCellCenter(
@@ -43,6 +44,7 @@ export function AnimationOverlay({
   boardSize,
   animatingPiece,
   progress,
+  pieceStyleId = 'classic',
 }: AnimationOverlayProps) {
   const [fromPos, setFromPos] = useState<{ x: number; y: number } | null>(null)
   const [toPos, setToPos] = useState<{ x: number; y: number } | null>(null)
@@ -72,6 +74,7 @@ export function AnimationOverlay({
         <Piece
           color={animatingPiece.pieceColor}
           type={animatingPiece.pieceType}
+          styleId={pieceStyleId}
         />
       </div>
     </div>

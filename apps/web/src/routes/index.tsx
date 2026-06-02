@@ -1,6 +1,7 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { createGame, type CreateGameRequest } from "~/lib/api";
+import { StylePicker } from "~/components/StylePicker";
 
 export const Route = createFileRoute("/")({
   component: HomeComponent,
@@ -11,6 +12,8 @@ type Difficulty = "easy" | "medium" | "hard";
 type Algorithm = "minimax" | "astar";
 type PresetKey = "english" | "international" | "brazilian" | "russian" | "pool";
 type Team = "red" | "black";
+
+const STORAGE_KEY_PIECE_STYLE = 'checkers-piece-style';
 
 interface RulesetInfo {
   name: string;
@@ -196,6 +199,18 @@ function HomeComponent() {
   const [algorithm, setAlgorithm] = useState<Algorithm>("minimax");
   const [aiTeam, setAiTeam] = useState<Team>("black");
   const [loading, setLoading] = useState(false);
+  const [pieceStyleId, setPieceStyleId] = useState<string>("classic");
+
+  useEffect(() => {
+    const saved = localStorage.getItem(STORAGE_KEY_PIECE_STYLE);
+    if (saved) {
+      setPieceStyleId(saved);
+    }
+  }, []);
+
+  useEffect(() => {
+    localStorage.setItem(STORAGE_KEY_PIECE_STYLE, pieceStyleId);
+  }, [pieceStyleId]);
 
   async function handleStart() {
     setLoading(true);
@@ -205,6 +220,10 @@ function HomeComponent() {
         ruleset: { preset: ruleset },
         mode,
         ...(mode !== "pvp" && { difficulty, algorithm, ai_team: aiTeam }),
+        styleConfig: {
+          pieceStyleId,
+          boardStyleId: "classic",
+        },
       };
 
       const result = await createGame(req);
@@ -379,6 +398,14 @@ function HomeComponent() {
                 </label>
               </div>
             )}
+
+            <div>
+              <div style={styles.sectionTitle}>Piece Style</div>
+              <StylePicker
+                selectedStyleId={pieceStyleId}
+                onSelect={setPieceStyleId}
+              />
+            </div>
 
             <button
               style={styles.startButton}
