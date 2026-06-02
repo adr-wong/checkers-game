@@ -1,4 +1,4 @@
-import { type RuleSet, type GameStatus, type Team } from '@checkers/shared'
+import { type RuleSet, type GameStatus, type Team, type GameStyleConfig } from '@checkers/shared'
 
 const API_BASE = '/api'
 
@@ -10,6 +10,7 @@ export interface CreateGameRequest {
   difficulty?: 'easy' | 'medium' | 'hard'
   ai_team?: Team
   algorithm?: 'minimax' | 'astar'
+  styleConfig?: GameStyleConfig
 }
 
 export interface GameState {
@@ -23,6 +24,14 @@ export interface GameState {
   ai_team?: Team
   algorithm?: 'minimax' | 'astar'
   move_count: number
+  history: Array<{
+    from: [number, number]
+    to: [number, number]
+    captures: [number, number][]
+    promotion: boolean
+    timestamp: string
+  }>
+  styleConfig: GameStyleConfig
 }
 
 export interface MoveResponse {

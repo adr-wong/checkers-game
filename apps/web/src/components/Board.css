@@ -1,4 +1,5 @@
 .board {
+  position: relative;
   display: grid;
   width: min(480px, 100%);
   aspect-ratio: 1;
@@ -47,4 +48,15 @@
   border-radius: 50%;
   background-color: #66bb6a;
   pointer-events: none;
+}
+
+.animation-overlay {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 10;
+}
+
+.animating-piece {
+  position: absolute;
 }

@@ -37,6 +37,9 @@ import { evaluate } from "./eval";
 /** Maximum depth for A* search regardless of difficulty. */
 const MAX_DEPTH = 8;
 
+/** Safety limit to prevent infinite loops in state-space exploration. */
+const MAX_ITERATIONS = 50000;
+
 // ─── Priority Queue (Binary Min-Heap) ───────────────────────────────────────
 
 interface AStarNode {
@@ -202,8 +205,15 @@ export function astarSearch(
 
   let bestScore = -Infinity;
   let bestMove = legalMoves[0];
+  let iterations = 0;
 
   while (openSet.size > 0) {
+    iterations++;
+    if (iterations > MAX_ITERATIONS) {
+      console.warn("A* safety limit reached. Returning best evaluated move.");
+      return bestMove;
+    }
+
     const current = openSet.pop()!;
 
     // State deduplication
@@ -212,17 +222,21 @@ export function astarSearch(
     visited.add(key);
 
     // Check if goal reached (opponent has no pieces)
-    if (current.h === 0 && current.firstMove !== null) {
-      return current.firstMove;
+    if (current.h === 0) {
+      return current.firstMove ?? legalMoves[0];
     }
 
-    // Depth limit reached: evaluate and track best
-    if (current.g >= MAX_DEPTH) {
-      const score = evaluate(current.board, team, ruleset);
-      if (score > bestScore) {
-        bestScore = score;
-        bestMove = current.firstMove!;
+    // Track best evaluated state (including start node)
+    if (current.firstMove !== null) {
+      const currentScore = evaluate(current.board, team, ruleset);
+      if (currentScore > bestScore) {
+        bestScore = currentScore;
+        bestMove = current.firstMove;
       }
+    }
+
+    // Depth limit reached: stop expanding
+    if (current.g >= MAX_DEPTH) {
       continue;
     }
 
@@ -233,6 +247,7 @@ export function astarSearch(
       const newBoard = applyMove(current.board, move, ruleset);
       const newKey = boardToKey(newBoard);
 
+      // Skip early if we already evaluated this layout
       if (visited.has(newKey)) continue;
 
       const newG = current.g + 1;
@@ -250,13 +265,6 @@ export function astarSearch(
         firstMove,
         path: [...current.path, move],
       });
-    }
-
-    // Even if we haven't reached the goal, track the best evaluated state
-    const currentScore = evaluate(current.board, team, ruleset);
-    if (currentScore > bestScore && current.firstMove !== null) {
-      bestScore = currentScore;
-      bestMove = current.firstMove;
     }
   }
 

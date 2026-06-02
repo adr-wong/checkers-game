@@ -1,6 +1,7 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { createGame, type CreateGameRequest } from "~/lib/api";
+import { StylePicker } from "~/components/StylePicker";
 
 export const Route = createFileRoute("/")({
   component: HomeComponent,
@@ -9,8 +10,77 @@ export const Route = createFileRoute("/")({
 type GameMode = "pvp" | "pva" | "ava";
 type Difficulty = "easy" | "medium" | "hard";
 type Algorithm = "minimax" | "astar";
-type BoardSize = 8 | 10;
+type PresetKey = "english" | "international" | "brazilian" | "russian" | "pool";
 type Team = "red" | "black";
+
+const STORAGE_KEY_PIECE_STYLE = 'checkers-piece-style';
+
+interface RulesetInfo {
+  name: string;
+  boardSize: 8 | 10;
+  description: string;
+  rules: string[];
+}
+
+const RULESETS: Record<PresetKey, RulesetInfo> = {
+  english: {
+    name: "English Draughts",
+    boardSize: 8,
+    description: "The classic checkers rules played worldwide. Simple and beginner-friendly.",
+    rules: [
+      "8x8 board",
+      "Kings move one square diagonally",
+      "Captures are mandatory",
+      "Pieces can only move forward",
+    ],
+  },
+  international: {
+    name: "International Draughts",
+    boardSize: 10,
+    description: "The standard for tournament play. Played on a larger board with flying kings.",
+    rules: [
+      "10x10 board",
+      "Kings fly across the board (any distance diagonally)",
+      "Captures are mandatory and must take the maximum number of pieces",
+      "Pieces can capture backwards",
+    ],
+  },
+  brazilian: {
+    name: "Brazilian Draughts",
+    boardSize: 8,
+    description: "Similar to International rules but on a smaller board.",
+    rules: [
+      "8x8 board",
+      "Kings fly across the board",
+      "Captures are mandatory and must take the maximum",
+      "Pieces can capture backwards",
+    ],
+  },
+  russian: {
+    name: "Russian Draughts",
+    boardSize: 8,
+    description: "Popular in Eastern Europe. Kings are powerful but captures end the turn.",
+    rules: [
+      "8x8 board",
+      "Kings fly across the board",
+      "Captures are mandatory",
+      "Promotion does not end the jump — a piece can continue after becoming a king",
+    ],
+  },
+  pool: {
+    name: "Pool Checkers",
+    boardSize: 8,
+    description: "American variant where pieces can move in any direction once on the board.",
+    rules: [
+      "8x8 board",
+      "Kings fly across the board",
+      "Normal pieces can move in any diagonal direction (not just forward)",
+      "Pieces can capture backwards",
+    ],
+  },
+};
+
+const PRESET_KEYS: PresetKey[] = ["english", "international", "brazilian", "russian", "pool"];
 
 const styles = {
   page: {
@@ -49,7 +119,9 @@ const styles = {
     backgroundColor: "#fff",
     border: "2px solid #000",
     padding: "2rem",
-    width: "400px",
+    width: "440px",
+    maxHeight: "90vh",
+    overflowY: "auto" as const,
     display: "flex",
     flexDirection: "column" as const,
     gap: "1rem",
@@ -86,37 +158,82 @@ const styles = {
     fontSize: "1.5rem",
     cursor: "pointer",
   },
-  select: {
-    padding: "0.4rem",
-    border: "1px solid #000",
-    backgroundColor: "#fff",
-    fontSize: "1rem",
+  rulesetCard: {
+    border: "1px solid #ccc",
+    borderRadius: "4px",
+    padding: "0.5rem 0.75rem",
+    cursor: "pointer",
+    backgroundColor: "#fafafa",
+  },
+  rulesetCardSelected: {
+    border: "2px solid #000",
+    borderRadius: "4px",
+    padding: "0.5rem 0.75rem",
+    cursor: "pointer",
+    backgroundColor: "#f0f0f0",
+  },
+  rulesetName: {
+    fontWeight: "bold" as const,
+    fontSize: "0.95rem",
+  },
+  rulesetDesc: {
+    fontSize: "0.8rem",
+    color: "#555",
+    marginTop: "0.15rem",
+  },
+  rulesetRules: {
+    fontSize: "0.75rem",
+    color: "#777",
+    marginTop: "0.25rem",
+    paddingLeft: "1rem",
+    margin: "0.25rem 0 0 1rem",
   },
 };
 
 function HomeComponent() {
   const navigate = useNavigate();
   const [modalOpen, setModalOpen] = useState(false);
-  const [boardSize, setBoardSize] = useState<BoardSize>(8);
+  const [ruleset, setRuleset] = useState<PresetKey>("english");
   const [mode, setMode] = useState<GameMode>("pvp");
   const [difficulty, setDifficulty] = useState<Difficulty>("easy");
   const [algorithm, setAlgorithm] = useState<Algorithm>("minimax");
   const [aiTeam, setAiTeam] = useState<Team>("black");
   const [loading, setLoading] = useState(false);
+  const [pieceStyleId, setPieceStyleId] = useState<string>("classic");
+
+  useEffect(() => {
+    const saved = localStorage.getItem(STORAGE_KEY_PIECE_STYLE);
+    if (saved) {
+      setPieceStyleId(saved);
+    }
+  }, []);
+
+  useEffect(() => {
+    localStorage.setItem(STORAGE_KEY_PIECE_STYLE, pieceStyleId);
+  }, [pieceStyleId]);
 
   async function handleStart() {
     setLoading(true);
+
     try {
       const req: CreateGameRequest = {
-        ruleset: { preset: boardSize === 8 ? "international8" : "international10" },
+        ruleset: { preset: ruleset },
         mode,
-        ...(mode !== "pvp" && { difficulty, algorithm }),
-        ...(mode === "pva" && { ai_team: aiTeam }),
+        ...(mode !== "pvp" && { difficulty, algorithm, ai_team: aiTeam }),
+        styleConfig: {
+          pieceStyleId,
+          boardStyleId: "classic",
+        },
       };
-      const { gameId } = await createGame(req);
-      navigate({ to: "/game/$gameId", params: { gameId } });
+
+      const result = await createGame(req);
+
+      navigate({ 
+        to: "/game/$gameId", 
+        params: { gameId: result.gameId } 
+      });
     } catch (err: any) {
-      alert(err.message ?? "Failed to create game");
+      alert(`Failed to create game: ${err.message || err}`);
     } finally {
       setLoading(false);
     }
@@ -127,7 +244,8 @@ function HomeComponent() {
   return (
     <div style={styles.page}>
       <h1 style={styles.heading}>Checkers Game</h1>
-      <button style={styles.button} onClick={() => setModalOpen(true)}>
+      <button   style={styles.button}
+                onClick={() => setModalOpen(true)}>
         New Game
       </button>
 
@@ -145,25 +263,28 @@ function HomeComponent() {
             </div>
 
             <div>
-              <div style={styles.sectionTitle}>Board Size</div>
-              <label style={styles.label}>
-                <input
-                  type="radio"
-                  name="boardSize"
-                  checked={boardSize === 8}
-                  onChange={() => setBoardSize(8)}
-                />
-                8x8
-              </label>
-              <label style={styles.label}>
-                <input
-                  type="radio"
-                  name="boardSize"
-                  checked={boardSize === 10}
-                  onChange={() => setBoardSize(10)}
-                />
-                10x10
-              </label>
+              <div style={styles.sectionTitle}>Ruleset</div>
+              {PRESET_KEYS.map((key) => {
+                const info = RULESETS[key];
+                const isSelected = ruleset === key;
+                return (
+                  <div
+                    key={key}
+                    style={isSelected ? styles.rulesetCardSelected : styles.rulesetCard}
+                    onClick={() => setRuleset(key)}
+                  >
+                    <div style={styles.rulesetName}>
+                      {info.name} ({info.boardSize}x{info.boardSize})
+                    </div>
+                    <div style={styles.rulesetDesc}>{info.description}</div>
+                    <ul style={styles.rulesetRules}>
+                      {info.rules.map((rule, i) => (
+                        <li key={i}>{rule}</li>
+                      ))}
+                    </ul>
+                  </div>
+                );
+              })}
             </div>
 
             <div>
@@ -277,6 +398,14 @@ function HomeComponent() {
                 </label>
               </div>
             )}
+
+            <div>
+              <div style={styles.sectionTitle}>Piece Style</div>
+              <StylePicker
+                selectedStyleId={pieceStyleId}
+                onSelect={setPieceStyleId}
+              />
+            </div>
 
             <button
               style={styles.startButton}

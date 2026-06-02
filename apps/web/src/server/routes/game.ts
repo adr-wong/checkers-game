@@ -3,7 +3,7 @@ import { z } from 'zod'
 import mongoose from 'mongoose'
 import { createGame, getGameById, addMoveToHistory, updateGame } from '../../models/game.service'
 import { triggerAiTurn, AiServiceError } from '../../services/ai.client'
-import { type RuleSet, type Move, type GameStatus, PRESET_RULESETS } from '@checkers/shared'
+import { type RuleSet, type Move, type GameStatus, type GameStyleConfig, DEFAULT_STYLE_CONFIG, PRESET_RULESETS } from '@checkers/shared'
 import { getLegalMoves, applyMove, isGameOver, parseBoardString, serializeBoardString } from '@checkers/shared'
 
 function isValidGameId(gameId: string): boolean {
@@ -22,6 +22,14 @@ type GameStateResponse = {
   ai_team?: 'red' | 'black'
   algorithm?: 'minimax' | 'astar'
   move_count: number
+  history: Array<{
+    from: [number, number]
+    to: [number, number]
+    captures: [number, number][]
+    promotion: boolean
+    timestamp: Date
+  }>
+  styleConfig: GameStyleConfig
 }
 
 type MoveResponse = {
@@ -43,6 +51,14 @@ function buildGameStateResponse(game: {
   ai_team?: 'red' | 'black'
   algorithm?: 'minimax' | 'astar'
   move_count: number
+  history: Array<{
+    from: [number, number]
+    to: [number, number]
+    captures: [number, number][]
+    promotion: boolean
+    timestamp: Date
+  }>
+  styleConfig: GameStyleConfig
 }): GameStateResponse {
   return {
     gameId: typeof game._id === 'string' ? game._id : game._id.toString(),
@@ -54,7 +70,83 @@ function buildGameStateResponse(game: {
     difficulty: game.difficulty,
     ai_team: game.ai_team,
     algorithm: game.algorithm,
-    move_count: game.move_count
+    move_count: game.move_count,
+    history: game.history.map(({ from, to, captures, promotion, timestamp }) => ({
+      from, to, captures, promotion, timestamp
+    })),
+    styleConfig: game.styleConfig
+  }
+}
+
+// Lock to prevent concurrent AI moves for the same game
+const aiMoveLocks = new Set<string>()
+// Cooldown after AI failure — prevent hammering the AI service when it's struggling
+const AI_FAILURE_COOLDOWN_MS = 5000
+const aiFailureTimestamps = new Map<string, number>()
+
+async function maybeTriggerNextAiMove(game: {
+  _id: string | { toString(): string }
+  mode: 'pvp' | 'pva' | 'ava'
+  status: string
+  move_count: number
+  turn: 'red' | 'black'
+  difficulty?: 'easy' | 'medium' | 'hard'
+  algorithm?: 'minimax' | 'astar'
+  board: string
+  ruleset: RuleSet
+}) {
+  const gameId = typeof game._id === 'string' ? game._id : game._id.toString()
+
+  if (game.mode !== 'ava' || game.status !== 'active' || game.move_count === 0) {
+    return
+  }
+
+  // Skip if an AI move is already in progress for this game
+  if (aiMoveLocks.has(gameId)) {
+    return
+  }
+
+  // Skip if recently failed — wait for cooldown
+  const lastFailure = aiFailureTimestamps.get(gameId)
+  if (lastFailure && Date.now() - lastFailure < AI_FAILURE_COOLDOWN_MS) {
+    return
+  }
+
+  aiMoveLocks.add(gameId)
+  try {
+    // Re-fetch the latest game state to avoid stale data
+    const latestGame = await getGameById(gameId)
+    if (!latestGame || latestGame.status !== 'active' || latestGame.move_count === 0) {
+      return
+    }
+
+    await triggerAiTurn(
+      gameId,
+      latestGame.turn,
+      latestGame.difficulty as 'easy' | 'medium' | 'hard',
+      latestGame.algorithm as 'minimax' | 'astar',
+      latestGame.board,
+      latestGame.ruleset
+    )
+    // Success — clear any failure timestamp
+    aiFailureTimestamps.delete(gameId)
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error)
+    if (message.includes('No legal moves available')) {
+      const board = parseBoardString(game.board, game.ruleset)
+      const gameOverResult = isGameOver(board, game.ruleset)
+      if (gameOverResult) {
+        await updateGame(gameId, {
+          status: gameOverResult.winner === 'draw' ? 'draw' : `${gameOverResult.winner}_wins`
+        })
+        return
+      }
+    }
+    console.error('Failed to trigger next AI move:', error)
+    // Record failure timestamp for cooldown
+    aiFailureTimestamps.set(gameId, Date.now())
+  } finally {
+    aiMoveLocks.delete(gameId)
   }
 }
 
@@ -70,7 +162,11 @@ const createGameSchema = z.object({
   mode: z.enum(['pvp', 'pva', 'ava']),
   difficulty: z.enum(['easy', 'medium', 'hard']).optional(),
   ai_team: z.enum(['red', 'black']).optional(),
-  algorithm: z.enum(['minimax', 'astar']).optional()
+  algorithm: z.enum(['minimax', 'astar']).optional(),
+  styleConfig: z.object({
+    pieceStyleId: z.string(),
+    boardStyleId: z.string()
+  }).optional()
 })
 
 const moveSchema = z.object({
@@ -95,7 +191,7 @@ gameRouter.post('/', async (c) => {
       return c.json({ error: 'Invalid request body', details: validation.error.errors }, 400)
     }
     
-    const { ruleset, mode, difficulty, ai_team, algorithm } = validation.data
+    const { ruleset, mode, difficulty, ai_team, algorithm, styleConfig } = validation.data
 
     // Convert preset to full ruleset if needed
     let fullRuleset: RuleSet
@@ -105,10 +201,10 @@ gameRouter.post('/', async (c) => {
       fullRuleset = ruleset
     }
 
-    const game = await createGame(fullRuleset, mode, difficulty, ai_team, algorithm)
+    const game = await createGame(fullRuleset, mode, difficulty, ai_team, algorithm, styleConfig ?? DEFAULT_STYLE_CONFIG)
 
     // For ava mode, trigger the first AI move for red team (red always moves first)
-    if (mode === 'ava' && ai_team === 'red') {
+    if (mode === 'ava') {
       try {
         await triggerAiTurn(
           game._id.toString(),
@@ -150,6 +246,11 @@ gameRouter.get('/:gameId/state', async (c) => {
     if (!game) {
       return c.json({ error: 'Game not found' }, 404)
     }
+    
+    // Fire-and-forget: trigger next AI move in background, don't block the response
+    maybeTriggerNextAiMove(game).catch((err) => {
+      console.error('Background AI move failed:', err)
+    })
     
     return c.json(buildGameStateResponse(game))
   } catch (error) {
@@ -244,6 +345,11 @@ gameRouter.post('/:gameId/move', async (c) => {
     if (game.mode === 'pva' && game.ai_team === game.turn) {
       return c.json({ error: "It is the AI's turn" }, 409)
     }
+
+    // For ava mode, no human moves are allowed
+    if (game.mode === 'ava') {
+      return c.json({ error: 'AI vs AI games cannot be played manually' }, 403)
+    }
     
     const body = await c.req.json()
     const validation = moveSchema.safeParse(body)
@@ -331,6 +437,8 @@ gameRouter.post('/:gameId/move', async (c) => {
 
         // Get updated game state after AI move
         const gameAfterAi = await getGameById(gameId)
+
+        await maybeTriggerNextAiMove(gameAfterAi || updatedGame)
 
         return c.json({
           move: playerMoveResponse,

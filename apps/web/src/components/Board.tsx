@@ -16,6 +16,10 @@ interface BoardProps {
   lastMove?: { from: [number, number]; to: [number, number] } | null
   onCellClick?: (row: number, col: number) => void
   disabled?: boolean
+  boardRef?: React.RefObject<HTMLDivElement | null>
+  animatingFrom?: [number, number] | null
+  capturedPositions?: Array<[number, number]>
+  pieceStyleId?: string
 }
 
 export function Board({
@@ -26,6 +30,10 @@ export function Board({
   lastMove,
   onCellClick,
   disabled,
+  boardRef,
+  animatingFrom,
+  capturedPositions,
+  pieceStyleId = 'classic',
 }: BoardProps) {
   const isDarkCell = (row: number, col: number) => (row + col) % 2 === 1
 
@@ -33,7 +41,7 @@ export function Board({
     selectedPosition?.[0] === row && selectedPosition?.[1] === col
 
   const isLegalMove = (row: number, col: number) =>
-    legalMoves?.some(([r, c]) => r === row && c === col) ?? false
+    legalMoves?.some((m) => m.to[0] === row && m.to[1] === col) ?? false
 
   const isLastMoveCell = (row: number, col: number) =>
     lastMove &&
@@ -42,6 +50,7 @@ export function Board({
 
   return (
     <div
+      ref={boardRef}
       className="board"
       style={{
         gridTemplateColumns: `repeat(${boardSize}, 1fr)`,
@@ -54,6 +63,10 @@ export function Board({
           const selected = isSelected(rowIdx, colIdx)
           const legal = isLegalMove(rowIdx, colIdx)
           const last = isLastMoveCell(rowIdx, colIdx)
+          const isAnimatingFromCell =
+            animatingFrom?.[0] === rowIdx && animatingFrom?.[1] === colIdx
+          const isCapturedCell =
+            capturedPositions?.some(([r, c]) => r === rowIdx && c === colIdx) ?? false
 
           return (
             <div
@@ -70,10 +83,11 @@ export function Board({
                 .join(' ')}
               onClick={() => !disabled && onCellClick?.(rowIdx, colIdx)}
             >
-              {cell.piece && (
+              {cell.piece && !isAnimatingFromCell && !isCapturedCell && (
                 <Piece
                   color={cell.piece.team}
                   type={cell.piece.type}
+                  styleId={pieceStyleId}
                 />
               )}
               {legal && !cell.piece && <div className="legal-dot" />}

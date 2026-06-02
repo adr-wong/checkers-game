@@ -1,5 +1,6 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
+import type { CSSProperties } from "react";
 import { getGameState, createGame, type GameState, type CreateGameRequest } from "~/lib/api";
 
 export const Route = createFileRoute("/game/$gameId/end")({
@@ -12,6 +13,7 @@ function GameEndComponent() {
   const [state, setState] = useState<GameState | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [playAgainLoading, setPlayAgainLoading] = useState(false);
 
   useEffect(() => {
     getGameState(gameId)
@@ -32,15 +34,22 @@ function GameEndComponent() {
   else resultText = "Draw";
 
   const handlePlayAgain = async () => {
-    const req: CreateGameRequest = {
-      ruleset: state.ruleset,
-      mode: state.mode,
-      difficulty: state.difficulty,
-      ai_team: state.ai_team,
-      algorithm: state.algorithm,
-    };
-    const { gameId: newId } = await createGame(req);
-    navigate({ to: "/game/$gameId", params: { gameId: newId } });
+    setPlayAgainLoading(true);
+    try {
+      const req: CreateGameRequest = {
+        ruleset: state!.ruleset,
+        mode: state!.mode,
+        difficulty: state!.difficulty,
+        ai_team: state!.ai_team,
+        algorithm: state!.algorithm,
+      };
+      const { gameId: newId } = await createGame(req);
+      navigate({ to: "/game/$gameId", params: { gameId: newId } });
+    } catch (e: any) {
+      alert(`Failed to create game: ${e.message || e}`);
+    } finally {
+      setPlayAgainLoading(false);
+    }
   };
 
   return (
@@ -67,18 +76,18 @@ function GameEndComponent() {
       </div>
 
       <div style={styles.buttons}>
-        <button style={styles.btn} onClick={handlePlayAgain}>
-          Play Again
+        <button style={styles.btn} onClick={handlePlayAgain} disabled={playAgainLoading}>
+          {playAgainLoading ? "Creating..." : "Play Again"}
         </button>
         <button style={styles.btn} onClick={() => navigate({ to: "/" })}>
-          New Game
+          Home
         </button>
       </div>
     </div>
   );
 }
 
-const styles: Record<string, React.CSSProperties> = {
+const styles: Record<string, CSSProperties> = {
   container: {
     maxWidth: 480,
     margin: "80px auto",

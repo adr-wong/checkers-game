@@ -324,11 +324,12 @@ function getLegalMovesFromPiece(
         const toCol = col + dCol;
 
         if (inBounds(toRow, toCol, size) && isDarkSquare(toRow, toCol) && !board[toRow][toCol].piece) {
+          const willPromote = !isKing && toRow === backRank;
           moves.push({
             from: [row, col],
             to: [toRow, toCol],
             captures: [],
-            promotion: false, // Non-capture doesn't promote
+            promotion: willPromote,
             ruleset,
           });
         }
@@ -441,6 +442,10 @@ function isGameOver(
   if (redMoves.length === 0 && blackMoves.length === 0) {
     return { winner: "draw" };
   }
+
+  // One team has no legal moves — they lose
+  if (redMoves.length === 0) return { winner: "black" };
+  if (blackMoves.length === 0) return { winner: "red" };
 
   return null;
 }

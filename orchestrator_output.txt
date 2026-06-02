@@ -1,120 +1,34 @@
-## Orchestrator Session Summary
+# Frontend Import Error Resolved!
 
-### Phase 4 Complete: Web API (All Issues Fixed)
+## Root Cause of Unresponsiveness
+Thanks to the browser console log you provided, the absolute root cause of the unresponsive button is found:
 
-### Tasks Completed
-- [x] Fixed route prefix in app.ts from /games to /api/game
-- [x] Updated all test paths to use /api/game
-- [x] Fixed algorithm enum to ['minimax', 'astar'] in model, service, and types
-- [x] Implemented AI turn triggering in POST /:gameId/move
-- [x] Moved DB persistence into triggerAiTurn function
-- [x] Added AiServiceError class and catch it in move route for 503
-- [x] Fixed status codes: game over conflict → 409, illegal move → 422, AI failure → 503
-- [x] Implemented row/col query param filtering in GET /:gameId/legal
-- [x] Fixed all response shapes to match GameStateResponse and MoveResponse specs
-- [x] Changed resign field from 'player' to 'team' and updated tests
-- [x] Replaced @hono/node-server with Bun.serve() in index.ts
-- [x] Removed @hono/node-server from package.json
-- [x] Made mongoose.connect() failure exit the process
-- [x] Read CORS origin from ALLOWED_ORIGIN env var
-- [x] Updated tests to match new response shapes and requirements
-- [x] Removed duplicate buildStandardLayout import from game.model.test.ts
-- [x] Added zod to package.json dependencies
-- [x] Fixed buildStandardLayout import to use @checkers/shared in game.service.test.ts
-- [x] Read AI_SERVICE_BASE_URL from process.env.AI_SERVICE_URL with fallback
-- [x] Implemented ava first-move trigger after game creation
-- [x] Added algorithm parameter to pva createGame call in game.service.test.ts
-- [x] Fixed mock RuleSet in ai.client.test.ts to use ENGLISH from @checkers/shared
-- [x] Removed callback from Bun.serve() call
-- [x] Added 409 check at top of move route for pva + AI team turn
-- [x] Removed .ts extension from import in ai.client.ts
-- [x] Added requestAiMove mock to game.api.test.ts
-
-### Files Changed (Phase 4)
-- `apps/web/src/server/app.ts` — Changed route prefix to /api/game
-- `apps/web/src/server/middleware.ts` — Read CORS from ALLOWED_ORIGIN env var
-- `apps/web/src/server/routes/game.ts` — Full implementation of all game endpoints with proper validation, AI triggering, and response shapes
-- `apps/web/src/services/ai.client.ts` — AiServiceError class, triggerAiTurn with DB persistence
-- `apps/web/src/models/game.model.ts` — Fixed algorithm enum
-- `apps/web/src/models/game.service.ts` — Fixed algorithm parameter type
-- `apps/web/index.ts` — Bun.serve() with process exit on DB failure
-- `apps/web/package.json` — Removed @hono/node-server
-- `apps/web/tests/api/game.api.test.ts` — Updated all tests
-- `apps/web/tests/game.model.test.ts` — Removed duplicate import
-- `packages/shared/src/types.ts` — Added GameStatus export
-- `packages/shared/src/index.ts` — Exported GameStatus
-
-### Test Results
-- **bun test apps/web/tests/** → 33 pass, 0 fail, 105 expect() calls (3 test files combined)
-
-### Key Implementation Details
-- **Route prefix**: Changed from /games to /api/game to match PRD
-- **Algorithm enum**: Fixed to ['minimax', 'astar'] as specified
-- **AI triggering**: triggerAiTurn now handles DB persistence and is called after player moves in pva mode
-- **Error handling**: AiServiceError for AI service failures returns 503
-- **Status codes**: Correct codes (409 for game over, 422 for illegal moves)
-- **Legal moves endpoint**: Now requires row and col query params for filtering
-- **Response shapes**: All responses match GameStateResponse and MoveResponse specs
-- **Server**: Uses Bun.serve() with process exit on DB connection failure
-
-### Branch: phase-4-web-api
-
----
-
-## Phase 5 Progress: Frontend (In Progress)
-
-### Tasks Completed
-- [x] Scaffolded TanStack Start in apps/web (Vite-based, port 3001)
-- [x] Created SVG piece components (Piece.tsx)
-- [x] Created API client module (api.ts)
-- [x] Created Board component with grid and highlights (Board.tsx, Board.css)
-- [x] Implemented Home page with new game modal (index.tsx)
-- [x] Implemented Game page with board, status bar, and move selection (game.$gameId.tsx)
-- [x] Implemented Post-game results page (game.$gameId.end.tsx)
-- [x] Implemented AI turn polling (1.5s interval)
-- [x] Implemented move selection UX (click piece → highlights → click destination)
-
-### Files Created (Phase 5)
-- `apps/web/vite.config.ts` — Vite config with TanStack Start plugin
-- `apps/web/src/router.tsx` — Router factory
-- `apps/web/src/routes/__root.tsx` — Root layout
-- `apps/web/src/routes/index.tsx` — Home page with new game modal
-- `apps/web/src/routes/game.$gameId.tsx` — Game page with board and controls
-- `apps/web/src/routes/game.$gameId.end.tsx` — Post-game results page
-- `apps/web/src/styles/global.css` — Global styles (flat white/black)
-- `apps/web/src/components/Piece.tsx` — SVG piece components
-- `apps/web/src/components/Board.tsx` — Board grid component
-- `apps/web/src/components/Board.css` — Board styles
-- `apps/web/src/lib/api.ts` — API client functions
-
-### Files Modified (Phase 5)
-- `apps/web/package.json` — Added TanStack, React, Vite deps and scripts
-- `apps/web/tsconfig.json` — Added path aliases
-
-### Design Notes
-- FLAT white background, black outlines (no colors yet)
-- Minimal styling for functionality first
-- Ready for design polish in Phase 7
-
-### Remaining Tasks
-- [ ] AI-vs-AI spectator mode (pause/resume, speed control)
-- [ ] Integration testing with running services
-- [ ] Fix any TypeScript/build errors
-
-### How to Run
-```bash
-# Terminal 1: Frontend dev server (port 3001)
-cd apps/web && bun run dev
-
-# Terminal 2: Hono API server (port 3000)
-cd apps/web && bun run index.ts
-
-# Terminal 3: AI service (port 4000)
-cd apps/ai-service && bun run index.ts
-
-# Terminal 4: MongoDB
-mongod or docker compose up mongodb
+```
+index.ts:8 Uncaught SyntaxError: The requested module '/@fs/.../packages/shared/src/board.ts' does not provide an export named 'isDarkSquare'
 ```
 
-### Current Branch
-- Main work on existing branch (Phase 5 frontend additions)
+Because of this top-level module resolution error, **the entire frontend bundle execution was aborted by the browser**. React never mounted, which is why clicking the button did absolutely nothing and no logs were made.
+
+### Why did this happen?
+In `packages/shared/src/index.ts` (the entry point for `@checkers/shared`), it was trying to export `isDarkSquare` from `./board.ts`:
+```typescript
+export {
+  parseBoardString,
+  serializeBoardString,
+  getLegalMoves,
+  applyMove,
+  isGameOver,
+  isDarkSquare, // <--- HERE (Wrong source!)
+} from "./board";
+```
+But `isDarkSquare` is actually defined in `./ruleset.ts`, NOT `./board.ts`. `./board.ts` only *imports* it. 
+
+## The Fix
+I edited `packages/shared/src/index.ts` to remove `isDarkSquare` from the `./board` export list. 
+Since `index.ts` already has `export * from "./ruleset";` on line 10, **`isDarkSquare` is now correctly exported from its true source (`ruleset.ts`) automatically.**
+
+## How to Test Now
+Now that this import crash is resolved:
+1. Clear browser cache or force refresh (**Ctrl + F5** or **Cmd + Shift + R**).
+2. Open `http://localhost:3001`.
+3. Click "New Game". The React modal should now pop up and the game is fully playable!
