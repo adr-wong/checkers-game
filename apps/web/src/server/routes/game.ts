@@ -5,6 +5,9 @@ import { createGame, getGameById, addMoveToHistory, updateGame } from '../../mod
 import { triggerAiTurn, AiServiceError } from '../../services/ai.client'
 import { type RuleSet, type Move, type GameStatus, type GameStyleConfig, DEFAULT_STYLE_CONFIG, PRESET_RULESETS } from '@checkers/shared'
 import { getLegalMoves, applyMove, isGameOver, parseBoardString, serializeBoardString } from '@checkers/shared'
+import { FREE_STYLE_IDS } from '../../styles/index'
+import { isStripeEnabled } from '../../lib/stripe'
+import { userOwnsStyle } from '../../models/purchase.service'
 
 function isValidGameId(gameId: string): boolean {
   return mongoose.Types.ObjectId.isValid(gameId)
@@ -201,7 +204,28 @@ gameRouter.post('/', async (c) => {
       fullRuleset = ruleset
     }
 
-    const game = await createGame(fullRuleset, mode, difficulty, ai_team, algorithm, styleConfig ?? DEFAULT_STYLE_CONFIG)
+    // Verify style ownership — fall back to classic if unowned
+    let finalStyleConfig = styleConfig ?? DEFAULT_STYLE_CONFIG
+    if (isStripeEnabled() && finalStyleConfig.pieceStyleId && !FREE_STYLE_IDS.has(finalStyleConfig.pieceStyleId)) {
+      const authHeader = c.req.header('Authorization')
+      const token = authHeader?.startsWith('Bearer ') ? authHeader.slice(7) : null
+      if (token) {
+        try {
+          const { verifyToken } = await import('@clerk/backend')
+          const payload = await verifyToken(token, { secretKey: process.env.CLERK_SECRET_KEY })
+          const owns = await userOwnsStyle(payload.sub, finalStyleConfig.pieceStyleId)
+          if (!owns) {
+            finalStyleConfig = { ...finalStyleConfig, pieceStyleId: 'classic' }
+          }
+        } catch {
+          finalStyleConfig = { ...finalStyleConfig, pieceStyleId: 'classic' }
+        }
+      } else {
+        finalStyleConfig = { ...finalStyleConfig, pieceStyleId: 'classic' }
+      }
+    }
+
+    const game = await createGame(fullRuleset, mode, difficulty, ai_team, algorithm, finalStyleConfig)
 
     // For ava mode, trigger the first AI move for red team (red always moves first)
     if (mode === 'ava') {
