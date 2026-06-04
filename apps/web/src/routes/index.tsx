@@ -200,6 +200,8 @@ function HomeComponent() {
   const [aiTeam, setAiTeam] = useState<Team>("black");
   const [loading, setLoading] = useState(false);
   const [pieceStyleId, setPieceStyleId] = useState<string>("classic");
+  const [leaderboardOpen, setLeaderboardOpen] = useState(false);
+  const [leaderboardData, setLeaderboardData] = useState<any[]>([]);
 
   useEffect(() => {
     const saved = localStorage.getItem(STORAGE_KEY_PIECE_STYLE);
@@ -211,6 +213,17 @@ function HomeComponent() {
   useEffect(() => {
     localStorage.setItem(STORAGE_KEY_PIECE_STYLE, pieceStyleId);
   }, [pieceStyleId]);
+
+  async function openLeaderboard() {
+    setLeaderboardOpen(true);
+    try {
+      const res = await fetch('/api/leaderboard');
+      const json = await res.json();
+      setLeaderboardData(json.entries);
+    } catch (e) {
+      console.error('Failed to fetch leaderboard:', e);
+    }
+  }
 
   async function handleStart() {
     setLoading(true);
@@ -244,10 +257,16 @@ function HomeComponent() {
   return (
     <div style={styles.page}>
       <h1 style={styles.heading}>Checkers Game</h1>
-      <button   style={styles.button}
-                onClick={() => setModalOpen(true)}>
-        New Game
-      </button>
+      <div style={{ display: 'flex', gap: '1rem' }}>
+        <button   style={styles.button}
+                  onClick={() => setModalOpen(true)}>
+          New Game
+        </button>
+        <button   style={styles.button}
+                  onClick={openLeaderboard}>
+          Leaderboard
+        </button>
+      </div>
 
       {modalOpen && (
         <div style={styles.overlay} onClick={() => setModalOpen(false)}>
@@ -413,6 +432,50 @@ function HomeComponent() {
               disabled={loading}
             >
               {loading ? "Starting..." : "Start Game"}
+            </button>
+          </div>
+        </div>
+      )}
+
+      {leaderboardOpen && (
+        <div style={styles.overlay} onClick={() => setLeaderboardOpen(false)}>
+          <div style={{ ...styles.modal, minWidth: 360 }} onClick={e => e.stopPropagation()}>
+            <h2 style={styles.modalTitle}>🏆 Leaderboard</h2>
+            <p style={{ fontSize: '0.8rem', color: '#555', margin: 0 }}>
+              Fewest moves to beat AI (Player vs AI only)
+            </p>
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.85rem' }}>
+              <thead>
+                <tr style={{ borderBottom: '2px solid #000' }}>
+                  <th style={{ textAlign: 'left', padding: '0.25rem' }}>#</th>
+                  <th style={{ textAlign: 'left', padding: '0.25rem' }}>Player</th>
+                  <th style={{ textAlign: 'right', padding: '0.25rem' }}>Moves</th>
+                  <th style={{ textAlign: 'left', padding: '0.25rem' }}>Difficulty</th>
+                </tr>
+              </thead>
+              <tbody>
+                {leaderboardData.map((entry, i) => (
+                  <tr key={entry._id} style={{ borderBottom: '1px solid #eee' }}>
+                    <td style={{ padding: '0.25rem' }}>{i + 1}</td>
+                    <td style={{ padding: '0.25rem' }}>{entry.username}</td>
+                    <td style={{ textAlign: 'right', padding: '0.25rem', fontWeight: 'bold' }}>
+                      {entry.bestMoves}
+                    </td>
+                    <td style={{ padding: '0.25rem', textTransform: 'capitalize' }}>
+                      {entry.difficulty}
+                    </td>
+                  </tr>
+                ))}
+                {leaderboardData.length === 0 && (
+                  <tr><td colSpan={4} style={{ padding: '1rem', textAlign: 'center', color: '#999' }}>
+                    No scores yet. Be the first!
+                  </td></tr>
+                )}
+              </tbody>
+            </table>
+            <button style={{ ...styles.startButton, marginTop: '1rem' }}
+              onClick={() => setLeaderboardOpen(false)}>
+              Close
             </button>
           </div>
         </div>

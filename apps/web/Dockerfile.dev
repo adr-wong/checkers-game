@@ -1,3 +1,4 @@
+# ── Development Dockerfile with HMR support ─────────────────────────────────
 FROM oven/bun:1
 
 WORKDIR /app
@@ -15,13 +16,12 @@ RUN bun install --frozen-lockfile
 COPY packages/shared ./packages/shared
 COPY apps/web ./apps/web
 
-# Build arg for Clerk publishable key (optional — app works without it)
+# Clerk publishable key (optional — app works without it)
 ARG VITE_CLERK_PUBLISHABLE_KEY
 ENV VITE_CLERK_PUBLISHABLE_KEY=$VITE_CLERK_PUBLISHABLE_KEY
 
-# Build the Vite frontend
-RUN bun run --cwd apps/web build
+# Expose port
+EXPOSE 3001
 
-EXPOSE 3000
-
-CMD ["bun", "run", "apps/web/index.ts"]
+# Run in development mode with HMR
+CMD ["bun", "run", "--cwd", "apps/web", "dev"]

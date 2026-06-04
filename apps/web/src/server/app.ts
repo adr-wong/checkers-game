@@ -1,6 +1,7 @@
 import { Hono } from 'hono'
 import { corsMiddleware, loggingMiddleware, errorHandlingMiddleware } from './middleware'
 import gameRouter from './routes/game'
+import leaderboardRouter from './routes/leaderboard'
 
 // Create the Hono app
 const app = new Hono()
@@ -17,6 +18,9 @@ app.get('/', (c) => {
 
 // Game routes
 app.route('/api/game', gameRouter)
+
+// Leaderboard routes
+app.route('/api/leaderboard', leaderboardRouter)
 
 // Not found handler
 app.notFound((c) => {

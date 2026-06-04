@@ -2,10 +2,50 @@ import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import type { CSSProperties } from "react";
 import { getGameState, createGame, type GameState, type CreateGameRequest } from "~/lib/api";
+import { useAuth } from "@clerk/clerk-react";
+import { isClerkEnabled } from "~/lib/clerk";
 
 export const Route = createFileRoute("/game/$gameId/end")({
   component: GameEndComponent,
 });
+
+function ScoreSubmitter({ state }: { state: GameState }) {
+  const { getToken, isSignedIn } = useAuth();
+
+  useEffect(() => {
+    async function submitScore() {
+      if (!isSignedIn) return;
+      if (state.mode !== 'pva') return;
+
+      const playerTeam = state.ai_team === 'red' ? 'black' : 'red';
+      if (state.status !== `${playerTeam}_wins`) return;
+
+      try {
+        const token = await getToken();
+        if (!token) return;
+
+        await fetch('/api/leaderboard', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${token}`,
+          },
+          body: JSON.stringify({
+            gameId: state.gameId,
+            moves: state.move_count,
+            difficulty: state.difficulty,
+            ruleset: state.ruleset.name,
+          }),
+        });
+      } catch (e) {
+        console.error('Failed to submit leaderboard score:', e);
+      }
+    }
+    submitScore();
+  }, [state.status, isSignedIn, getToken, state]);
+
+  return null;
+}
 
 function GameEndComponent() {
   const { gameId } = Route.useParams();
@@ -54,6 +94,7 @@ function GameEndComponent() {
 
   return (
     <div style={styles.container}>
+      {isClerkEnabled && state && <ScoreSubmitter state={state} />}
       <h1 style={styles.title}>Game Over</h1>
 
       <div style={styles.card}>
