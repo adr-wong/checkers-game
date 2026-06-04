@@ -3,6 +3,7 @@ import { useState, useEffect, useCallback } from "react";
 import { useAuth } from "@clerk/clerk-react";
 import { createGame, type CreateGameRequest } from "~/lib/api";
 import { StylePicker } from "~/components/StylePicker";
+import { isClerkEnabled } from "~/lib/clerk";
 
 export const Route = createFileRoute("/")({
   component: HomeComponent,
@@ -193,7 +194,6 @@ const styles = {
 
 function HomeComponent() {
   const navigate = useNavigate();
-  const { getToken, isSignedIn } = useAuth();
   const [modalOpen, setModalOpen] = useState(false);
   const [ruleset, setRuleset] = useState<PresetKey>("english");
   const [mode, setMode] = useState<GameMode>("pvp");
@@ -204,7 +204,6 @@ function HomeComponent() {
   const [pieceStyleId, setPieceStyleId] = useState<string>("classic");
   const [leaderboardOpen, setLeaderboardOpen] = useState(false);
   const [leaderboardData, setLeaderboardData] = useState<any[]>([]);
-  const [ownedStyles, setOwnedStyles] = useState<string[]>(['classic']);
 
   useEffect(() => {
     const saved = localStorage.getItem(STORAGE_KEY_PIECE_STYLE);
@@ -216,61 +215,6 @@ function HomeComponent() {
   useEffect(() => {
     localStorage.setItem(STORAGE_KEY_PIECE_STYLE, pieceStyleId);
   }, [pieceStyleId]);
-
-  useEffect(() => {
-    async function fetchOwned() {
-      if (!isSignedIn) { setOwnedStyles(['classic']); return }
-      const token = await getToken();
-      const res = await fetch('/api/shop/owned', {
-        headers: { Authorization: `Bearer ${token}` }
-      });
-      const json = await res.json();
-      setOwnedStyles(json.owned ?? ['classic']);
-    }
-    fetchOwned();
-  }, [isSignedIn]);
-
-  useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
-    const sessionId = params.get('session_id');
-    if (!sessionId || !params.get('style_purchased')) return;
-
-    async function confirmPurchase() {
-      if (!isSignedIn) return;
-      const token = await getToken();
-      const res = await fetch('/api/shop/confirm', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify({ sessionId }),
-      });
-      if (res.ok) {
-        const json = await res.json();
-        setOwnedStyles(prev => [...new Set([...prev, json.styleId])]);
-        window.history.replaceState({}, '', '/');
-      }
-    }
-    confirmPurchase();
-  }, [isSignedIn]);
-
-  const handlePurchase = useCallback(async (styleId: string) => {
-    if (!isSignedIn) { alert('Sign in to purchase styles.'); return }
-    const token = await getToken();
-    const res = await fetch('/api/shop/checkout', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${token}`,
-      },
-      body: JSON.stringify({ styleId }),
-    });
-    const json = await res.json();
-    if (json.checkoutUrl) {
-      window.location.href = json.checkoutUrl;
-    }
-  }, [isSignedIn, getToken]);
 
   async function openLeaderboard() {
     setLeaderboardOpen(true);
@@ -478,12 +422,17 @@ function HomeComponent() {
 
             <div>
               <div style={styles.sectionTitle}>Piece Style</div>
-              <StylePicker
-                selectedStyleId={pieceStyleId}
-                onSelect={setPieceStyleId}
-                ownedStyleIds={ownedStyles}
-                onPurchase={handlePurchase}
-              />
+              {isClerkEnabled ? (
+                <ShopSection
+                  pieceStyleId={pieceStyleId}
+                  setPieceStyleId={setPieceStyleId}
+                />
+              ) : (
+                <StylePicker
+                  selectedStyleId={pieceStyleId}
+                  onSelect={setPieceStyleId}
+                />
+              )}
             </div>
 
             <button
@@ -541,5 +490,80 @@ function HomeComponent() {
         </div>
       )}
     </div>
+  );
+}
+
+function ShopSection({
+  pieceStyleId,
+  setPieceStyleId,
+}: {
+  pieceStyleId: string;
+  setPieceStyleId: (id: string) => void;
+}) {
+  const { getToken, isSignedIn } = useAuth();
+  const [ownedStyles, setOwnedStyles] = useState<string[]>(['classic']);
+
+  useEffect(() => {
+    async function fetchOwned() {
+      if (!isSignedIn) { setOwnedStyles(['classic']); return }
+      const token = await getToken();
+      const res = await fetch('/api/shop/owned', {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      const json = await res.json();
+      setOwnedStyles(json.owned ?? ['classic']);
+    }
+    fetchOwned();
+  }, [isSignedIn]);
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const sessionId = params.get('session_id');
+    if (!sessionId || !params.get('style_purchased')) return;
+
+    async function confirmPurchase() {
+      if (!isSignedIn) return;
+      const token = await getToken();
+      const res = await fetch('/api/shop/confirm', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ sessionId }),
+      });
+      if (res.ok) {
+        const json = await res.json();
+        setOwnedStyles(prev => [...new Set([...prev, json.styleId])]);
+        window.history.replaceState({}, '', '/');
+      }
+    }
+    confirmPurchase();
+  }, [isSignedIn]);
+
+  const handlePurchase = useCallback(async (styleId: string) => {
+    if (!isSignedIn) { alert('Sign in to purchase styles.'); return }
+    const token = await getToken();
+    const res = await fetch('/api/shop/checkout', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify({ styleId }),
+    });
+    const json = await res.json();
+    if (json.checkoutUrl) {
+      window.location.href = json.checkoutUrl;
+    }
+  }, [isSignedIn, getToken]);
+
+  return (
+    <StylePicker
+      selectedStyleId={pieceStyleId}
+      onSelect={setPieceStyleId}
+      ownedStyleIds={ownedStyles}
+      onPurchase={handlePurchase}
+    />
   );
 }

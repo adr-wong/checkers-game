@@ -28,5 +28,3 @@ export const PREMIUM_STYLES: Record<string, { name: string; priceUsd: number }> 
   marble:      { name: 'Marble',       priceUsd: 2 },
   minimalist:  { name: 'Minimalist',   priceUsd: 2 },
 };
-
-export const isStripeEnabled = !!process.env.STRIPE_SECRET_KEY;

@@ -206,7 +206,7 @@ gameRouter.post('/', async (c) => {
 
     // Verify style ownership — fall back to classic if unowned
     let finalStyleConfig = styleConfig ?? DEFAULT_STYLE_CONFIG
-    if (isStripeEnabled() && finalStyleConfig.pieceStyleId && !FREE_STYLE_IDS.has(finalStyleConfig.pieceStyleId)) {
+    if (isStripeEnabled && finalStyleConfig.pieceStyleId && !FREE_STYLE_IDS.has(finalStyleConfig.pieceStyleId)) {
       const authHeader = c.req.header('Authorization')
       const token = authHeader?.startsWith('Bearer ') ? authHeader.slice(7) : null
       if (token) {
