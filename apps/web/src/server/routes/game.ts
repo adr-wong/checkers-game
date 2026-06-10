@@ -33,6 +33,7 @@ type GameStateResponse = {
     timestamp: Date
   }>
   styleConfig: GameStyleConfig
+  player_name?: string
 }
 
 type MoveResponse = {
@@ -62,6 +63,7 @@ function buildGameStateResponse(game: {
     timestamp: Date
   }>
   styleConfig: GameStyleConfig
+  player_name?: string
 }): GameStateResponse {
   return {
     gameId: typeof game._id === 'string' ? game._id : game._id.toString(),
@@ -77,7 +79,8 @@ function buildGameStateResponse(game: {
     history: game.history.map(({ from, to, captures, promotion, timestamp }) => ({
       from, to, captures, promotion, timestamp
     })),
-    styleConfig: game.styleConfig
+    styleConfig: game.styleConfig,
+    player_name: game.player_name
   }
 }
 
@@ -93,6 +96,7 @@ async function maybeTriggerNextAiMove(game: {
   status: string
   move_count: number
   turn: 'red' | 'black'
+  ai_team?: 'red' | 'black'
   difficulty?: 'easy' | 'medium' | 'hard'
   algorithm?: 'minimax' | 'astar'
   board: string
@@ -100,7 +104,9 @@ async function maybeTriggerNextAiMove(game: {
 }) {
   const gameId = typeof game._id === 'string' ? game._id : game._id.toString()
 
-  if (game.mode !== 'ava' || game.status !== 'active' || game.move_count === 0) {
+  const isAITurn = game.mode === 'ava' ||
+    (game.mode === 'pva' && game.ai_team === game.turn)
+  if (!isAITurn || game.status !== 'active' || game.move_count === 0) {
     return
   }
 
@@ -169,7 +175,8 @@ const createGameSchema = z.object({
   styleConfig: z.object({
     pieceStyleId: z.string(),
     boardStyleId: z.string()
-  }).optional()
+  }).optional(),
+  player_name: z.string().optional()
 })
 
 const moveSchema = z.object({
@@ -194,7 +201,7 @@ gameRouter.post('/', async (c) => {
       return c.json({ error: 'Invalid request body', details: validation.error.errors }, 400)
     }
     
-    const { ruleset, mode, difficulty, ai_team, algorithm, styleConfig } = validation.data
+    const { ruleset, mode, difficulty, ai_team, algorithm, styleConfig, player_name } = validation.data
 
     // Convert preset to full ruleset if needed
     let fullRuleset: RuleSet
@@ -225,10 +232,11 @@ gameRouter.post('/', async (c) => {
       }
     }
 
-    const game = await createGame(fullRuleset, mode, difficulty, ai_team, algorithm, finalStyleConfig)
+    const game = await createGame(fullRuleset, mode, difficulty, ai_team, algorithm, finalStyleConfig, player_name)
 
-    // For ava mode, trigger the first AI move for red team (red always moves first)
-    if (mode === 'ava') {
+    // Trigger the first AI move for red team when AI goes first (red always moves first)
+    const aiGoesFirst = (mode === 'ava') || (mode === 'pva' && ai_team === 'red')
+    if (aiGoesFirst) {
       try {
         await triggerAiTurn(
           game._id.toString(),

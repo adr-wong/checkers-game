@@ -10,14 +10,14 @@ interface StylePickerProps {
 
 const styles = {
   grid: {
-    display: 'flex',
-    flexDirection: 'column' as const,
-    gap: '0.5rem',
+    display: 'grid',
+    gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))',
+    gap: '0.75rem',
   },
   card: {
     border: '1px solid #ccc',
-    borderRadius: '4px',
-    padding: '0.5rem 0.75rem',
+    borderRadius: '6px',
+    padding: '0.75rem 1rem',
     cursor: 'pointer',
     backgroundColor: '#fafafa',
     display: 'flex',
@@ -26,8 +26,8 @@ const styles = {
   },
   cardSelected: {
     border: '2px solid #000',
-    borderRadius: '4px',
-    padding: '0.5rem 0.75rem',
+    borderRadius: '6px',
+    padding: '0.75rem 1rem',
     cursor: 'pointer',
     backgroundColor: '#f0f0f0',
     display: 'flex',
@@ -36,8 +36,8 @@ const styles = {
   },
   cardLocked: {
     border: '1px solid #ccc',
-    borderRadius: '4px',
-    padding: '0.5rem 0.75rem',
+    borderRadius: '6px',
+    padding: '0.75rem 1rem',
     cursor: 'default',
     backgroundColor: '#fafafa',
     display: 'flex',
@@ -64,16 +64,17 @@ const styles = {
   description: {
     fontSize: '0.8rem',
     color: '#555',
-    marginTop: '0.1rem',
+    marginTop: '0.15rem',
   },
   buyButton: {
     backgroundColor: '#000',
     color: '#fff',
     border: 'none',
-    padding: '0.25rem 0.75rem',
+    padding: '0.3rem 0.85rem',
     fontSize: '0.8rem',
     cursor: 'pointer',
     whiteSpace: 'nowrap' as const,
+    borderRadius: '4px',
   },
 };
 

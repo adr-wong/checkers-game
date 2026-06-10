@@ -11,6 +11,7 @@ export interface CreateGameRequest {
   ai_team?: Team
   algorithm?: 'minimax' | 'astar'
   styleConfig?: GameStyleConfig
+  player_name?: string
 }
 
 export interface GameState {
@@ -32,6 +33,7 @@ export interface GameState {
     timestamp: string
   }>
   styleConfig: GameStyleConfig
+  player_name?: string
 }
 
 export interface MoveResponse {
@@ -78,10 +80,11 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 
 // --- API functions ---
 
-export async function createGame(req: CreateGameRequest): Promise<{ gameId: string; state: GameState }> {
+export async function createGame(req: CreateGameRequest, token?: string): Promise<{ gameId: string; state: GameState }> {
   return request('/game', {
     method: 'POST',
     body: JSON.stringify(req),
+    ...(token && { headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` } }),
   })
 }
 

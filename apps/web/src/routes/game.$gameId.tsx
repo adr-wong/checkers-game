@@ -5,6 +5,7 @@ import type { Team } from "@checkers/shared";
 import { Board } from "~/components/Board";
 import { AnimationOverlay } from "~/components/AnimationOverlay";
 import { MoveLog } from "~/components/MoveLog";
+import { GameBanner } from "~/components/GameBanner";
 import {
   getGameState,
   getLegalMoves,
@@ -68,15 +69,22 @@ function buildAnimationSequence(
   for (let i = 0; i < move.captures.length; i++) {
     const capturePos = move.captures[i]!;
     const isLast = i === move.captures.length - 1;
+    // Compute landing position: one square beyond the captured piece in the jump direction
+    const dirRow = capturePos[0] - currentPos[0];
+    const dirCol = capturePos[1] - currentPos[1];
+    const landingPos: [number, number] = [
+      capturePos[0] + dirRow,
+      capturePos[1] + dirCol,
+    ];
     sequence.push({
       from: currentPos,
-      to: isLast ? move.to : capturePos,
+      to: isLast ? move.to : landingPos,
       captures: [capturePos],
       promotion: isLast ? move.promotion : false,
       pieceColor,
       pieceType,
     });
-    currentPos = capturePos;
+    currentPos = isLast ? move.to : landingPos;
   }
   return sequence;
 }
@@ -112,11 +120,18 @@ function detectAIMoveFromBoards(
   }
 
   if (sources.length >= 1 && destinations.length >= 1) {
+    const src = sources[0]!;
     const to = destinations[destinations.length - 1]!;
     const destPiece = final[to[0]]![to[1]]!.piece;
     const promotion = destPiece?.type === "king";
+    // Sort captures by distance from source (nearest first) for correct jump order
+    captures.sort((a, b) => {
+      const distA = Math.abs(a[0] - src[0]) + Math.abs(a[1] - src[1]);
+      const distB = Math.abs(b[0] - src[0]) + Math.abs(b[1] - src[1]);
+      return distA - distB;
+    });
     return {
-      from: sources[0]!,
+      from: src,
       to,
       captures,
       promotion,
@@ -127,21 +142,39 @@ function detectAIMoveFromBoards(
 
 const styles = {
   page: {
-    minHeight: "100vh",
+    height: "100vh",
     backgroundColor: "#fff",
     display: "flex",
-    flexDirection: "column" as const,
-    alignItems: "center",
+    flexDirection: "row" as const,
     fontFamily: "sans-serif",
+    overflow: "hidden",
+  },
+  boardArea: {
+    flex: 1,
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    position: "relative" as const,
+    height: "100%",
+  },
+  sidebar: {
+    width: "280px",
+    display: "flex",
+    flexDirection: "column" as const,
+    gap: "0.75rem",
     padding: "1rem",
+    borderLeft: "2px solid #000",
+    overflowY: "auto" as const,
+    height: "100%",
   },
   statusBar: {
     display: "flex",
-    gap: "2rem",
+    flexDirection: "column" as const,
+    gap: "0.35rem",
     border: "2px solid #000",
-    padding: "0.5rem 1.5rem",
-    marginBottom: "1rem",
-    fontSize: "1rem",
+    padding: "0.75rem",
+    fontSize: "0.9rem",
+    flexShrink: 0,
   },
   statusItem: {
     display: "flex",
@@ -158,7 +191,7 @@ const styles = {
     padding: "0.5rem 1.5rem",
     fontSize: "1rem",
     cursor: "pointer",
-    marginTop: "1rem",
+    flexShrink: 0,
   },
 };
 
@@ -188,6 +221,7 @@ function GameComponent() {
     Array<[number, number]>
   >([]);
   const [animProgress, setAnimProgress] = useState(0);
+  const [animationOrigin, setAnimationOrigin] = useState<[number, number] | null>(null);
 
   // Refs for values needed inside rAF callbacks (avoids stale closures)
   const animationQueueRef = useRef<AnimationStep[]>([]);
@@ -279,6 +313,7 @@ function GameComponent() {
           animationQueueRef.current = sequence.slice(1);
 
           setIsAnimating(true);
+          setAnimationOrigin(sequence[0]!.from);
           startAnimationStep(sequence[0]!);
 
           // Update tracking refs
@@ -336,6 +371,8 @@ function GameComponent() {
   function applyFinalState() {
     setIsAnimating(false);
     setAnimProgress(0);
+    setAnimationOrigin(null);
+    setCapturedPositions([]);
     pendingAIMoveRef.current = false;
 
     const serverState = nextServerStateRef.current;
@@ -354,8 +391,6 @@ function GameComponent() {
   }
 
   function handleAnimationComplete() {
-    setCapturedPositions([]);
-
     const queue = animationQueueRef.current;
     if (queue.length > 0) {
       const nextStep = queue[0]!;
@@ -443,7 +478,7 @@ function GameComponent() {
       from: step.from,
       to: step.to,
     });
-    setCapturedPositions(step.captures);
+    setCapturedPositions((prev) => [...prev, ...step.captures]);
     setAnimProgress(0);
 
     const startTime = performance.now();
@@ -496,6 +531,7 @@ function GameComponent() {
           animationQueueRef.current = sequence.slice(1);
 
           setIsAnimating(true);
+          setAnimationOrigin(sequence[0]!.from);
 
           if (sequence.length > 0) {
             startAnimationStep(sequence[0]!);
@@ -557,28 +593,10 @@ function GameComponent() {
 
   return (
     <div style={styles.page}>
-      <div style={styles.statusBar}>
-        <div style={styles.statusItem}>
-          <span style={styles.label}>Turn:</span>
-          <span>{state.turn === "red" ? "Red" : "Black"}</span>
-        </div>
-        <div style={styles.statusItem}>
-          <span style={styles.label}>Status:</span>
-          <span>{state.status}</span>
-        </div>
-        <div style={styles.statusItem}>
-          <span style={styles.label}>Moves:</span>
-          <span>{state.move_count}</span>
-        </div>
-        <div style={styles.statusItem}>
-          <span style={styles.label}>Pieces:</span>
-          <span>
-            Red {pieces.red} / Black {pieces.black}
-          </span>
-        </div>
-      </div>
-
-      <div style={{ position: "relative" }}>
+      <div style={styles.boardArea}>
+        {state.status !== "active" && (
+          <GameBanner status={state.status as "red_wins" | "black_wins" | "draw"} />
+        )}
         <Board
           boardSize={boardSize}
           cells={cells}
@@ -589,6 +607,7 @@ function GameComponent() {
           disabled={disabled}
           boardRef={boardRef}
           animatingFrom={animatingPiece?.from ?? null}
+          animationOrigin={animationOrigin}
           capturedPositions={capturedPositions}
           pieceStyleId={state.styleConfig?.pieceStyleId}
         />
@@ -602,28 +621,49 @@ function GameComponent() {
         />
       </div>
 
-      <div style={{ width: "100%", maxWidth: "400px", marginTop: "1rem" }}>
+      <div style={styles.sidebar}>
+        <div style={styles.statusBar}>
+          <div style={styles.statusItem}>
+            <span style={styles.label}>Turn:</span>
+            <span>{state.turn === "red" ? "Red" : "Black"}</span>
+          </div>
+          <div style={styles.statusItem}>
+            <span style={styles.label}>Status:</span>
+            <span>{state.status}</span>
+          </div>
+          <div style={styles.statusItem}>
+            <span style={styles.label}>Moves:</span>
+            <span>{state.move_count}</span>
+          </div>
+          <div style={styles.statusItem}>
+            <span style={styles.label}>Pieces:</span>
+            <span>
+              Red {pieces.red} / Black {pieces.black}
+            </span>
+          </div>
+        </div>
+
         <MoveLog
           history={state.history ?? []}
           currentTurn={state.turn}
           boardSize={boardSize}
         />
-      </div>
 
-      <div style={{ display: "flex", gap: "0.5rem", marginTop: "1rem" }}>
-        <button
-          style={styles.resignButton}
-          onClick={handleResign}
-          disabled={resigning || state.status !== "active"}
-        >
-          {resigning ? "Resigning..." : "Resign"}
-        </button>
-        <button
-          style={styles.resignButton}
-          onClick={() => navigate({ to: "/" })}
-        >
-          Home
-        </button>
+        <div style={{ display: "flex", gap: "0.5rem", flexShrink: 0 }}>
+          <button
+            style={{ ...styles.resignButton, flex: 1 }}
+            onClick={handleResign}
+            disabled={resigning || state.status !== "active"}
+          >
+            {resigning ? "Resigning..." : "Resign"}
+          </button>
+          <button
+            style={{ ...styles.resignButton, flex: 1 }}
+            onClick={() => navigate({ to: "/" })}
+          >
+            Home
+          </button>
+        </div>
       </div>
     </div>
   );

@@ -6,7 +6,15 @@ const clerk = createClerkClient({ secretKey: process.env.CLERK_SECRET_KEY })
 const leaderboardRouter = new Hono()
 
 leaderboardRouter.get('/', async (c) => {
-  const entries = await getLeaderboard(20)
+  const query = c.req.query()
+  const entries = await getLeaderboard({
+    difficulty: query.difficulty || undefined,
+    ruleset: query.ruleset || undefined,
+    algorithm: query.algorithm || undefined,
+    player_team: query.player_team || undefined,
+    limit: query.limit ? parseInt(query.limit) : 50,
+    offset: query.offset ? parseInt(query.offset) : 0,
+  })
   return c.json({ entries })
 })
 
@@ -34,13 +42,13 @@ leaderboardRouter.post('/', async (c) => {
   }
 
   const body = await c.req.json()
-  const { gameId, moves, difficulty, ruleset } = body
+  const { gameId, moves, difficulty, ruleset, player_team, algorithm, player_name } = body
 
-  if (!gameId || typeof moves !== 'number' || !difficulty || !ruleset) {
+  if (!gameId || typeof moves !== 'number' || !difficulty || !ruleset || !player_team || !algorithm) {
     return c.json({ error: 'Invalid body' }, 400)
   }
 
-  await upsertLeaderboard(userId, username, moves, gameId, difficulty, ruleset)
+  await upsertLeaderboard(userId, username, moves, gameId, difficulty, ruleset, player_team, algorithm, player_name)
   return c.json({ ok: true })
 })
 

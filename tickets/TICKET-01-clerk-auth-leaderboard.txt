@@ -1,0 +1,365 @@
+================================================================================
+TICKET-01 — Clerk Authentication + PvA Leaderboard
+================================================================================
+Priority: High
+Scope: apps/web (frontend + server) + MongoDB
+Dependencies: @clerk/react, @clerk/backend (npm packages)
+
+--------------------------------------------------------------------------------
+OVERVIEW
+--------------------------------------------------------------------------------
+Integrate Clerk authentication embedded in-page. Add a leaderboard collection
+in MongoDB that tracks the best (fewest moves) win per user in PvA (Player vs AI)
+games. The leaderboard must be accessible from the homepage and updated
+automatically when a player wins.
+
+Clerk should be embedded directly in the page using Clerk's prebuilt components
+(SignIn, SignUp, UserButton) — NOT redirected to a hosted page.
+
+--------------------------------------------------------------------------------
+STEP 1 — Install Clerk packages
+--------------------------------------------------------------------------------
+In apps/web:
+
+  bun add @clerk/clerk-react @clerk/backend
+
+In apps/web/.env (create if missing; Bun loads .env automatically):
+
+  VITE_CLERK_PUBLISHABLE_KEY=pk_live_XXXXXXXX
+  CLERK_SECRET_KEY=sk_live_XXXXXXXX
+
+--------------------------------------------------------------------------------
+STEP 2 — Wrap the app with ClerkProvider
+--------------------------------------------------------------------------------
+FILE: apps/web/src/main.tsx
+
+Add ClerkProvider around the router. Example:
+
+  import { ClerkProvider } from '@clerk/clerk-react'
+
+  const PUBLISHABLE_KEY = import.meta.env.VITE_CLERK_PUBLISHABLE_KEY
+
+  // Inside render:
+  <ClerkProvider publishableKey={PUBLISHABLE_KEY} appearance={{ baseTheme: undefined }}>
+    <RouterProvider router={router} />
+  </ClerkProvider>
+
+--------------------------------------------------------------------------------
+STEP 3 — Add Clerk UI to the Header / __root.tsx
+--------------------------------------------------------------------------------
+FILE: apps/web/src/routes/__root.tsx
+
+The root layout should show a top bar with:
+- Left: "Checkers" title / logo (already exists as h1 on homepage)
+- Right: <SignedIn><UserButton /></SignedIn> <SignedOut><SignInButton mode="modal" /></SignedOut>
+
+Use Clerk's prebuilt components. Keep the existing inline-style aesthetic
+(white bg, black borders, sans-serif font) by passing `appearance` props:
+
+  import {
+    ClerkProvider,
+    SignedIn,
+    SignedOut,
+    SignInButton,
+    UserButton,
+  } from '@clerk/clerk-react'
+
+  // In the root outlet wrapper, add a header bar:
+  <div style={{
+    position: 'fixed',
+    top: 0, right: 0,
+    padding: '0.5rem 1rem',
+    zIndex: 9999,
+    display: 'flex',
+    gap: '0.5rem',
+    alignItems: 'center',
+    fontFamily: 'sans-serif',
+  }}>
+    <SignedIn>
+      <UserButton appearance={{ elements: { avatarBox: { width: 32, height: 32 } } }} />
+    </SignedIn>
+    <SignedOut>
+      <SignInButton mode="modal">
+        <button style={{
+          backgroundColor: '#fff',
+          color: '#000',
+          border: '2px solid #000',
+          padding: '0.4rem 1rem',
+          fontSize: '0.9rem',
+          cursor: 'pointer',
+        }}>Sign In</button>
+      </SignInButton>
+    </SignedOut>
+  </div>
+
+NOTE: The root.tsx already wraps an <Outlet />. Add the auth header ABOVE the
+outlet, not replacing it.
+
+--------------------------------------------------------------------------------
+STEP 4 — MongoDB Leaderboard Model
+--------------------------------------------------------------------------------
+FILE: apps/web/src/models/leaderboard.model.ts  (CREATE NEW FILE)
+
+  import mongoose, { Schema, Document } from 'mongoose'
+
+  export interface ILeaderboardEntry extends Document {
+    userId: string          // Clerk user ID (e.g. "user_abc123")
+    username: string        // Display name from Clerk
+    bestMoves: number       // Fewest moves in a win (lower = better)
+    gameId: string          // The game that achieved this score
+    difficulty: 'easy' | 'medium' | 'hard'
+    ruleset: string         // e.g. "english", "international"
+    achievedAt: Date
+    updatedAt: Date
+  }
+
+  const LeaderboardSchema = new Schema({
+    userId:     { type: String, required: true, unique: true },
+    username:   { type: String, required: true },
+    bestMoves:  { type: Number, required: true },
+    gameId:     { type: String, required: true },
+    difficulty: { type: String, enum: ['easy', 'medium', 'hard'], required: true },
+    ruleset:    { type: String, required: true },
+    achievedAt: { type: Date, required: true, default: Date.now },
+    updatedAt:  { type: Date, required: true, default: Date.now },
+  })
+
+  LeaderboardSchema.index({ bestMoves: 1 })   // for fast sorted queries
+
+  export const LeaderboardEntry = mongoose.model<ILeaderboardEntry>(
+    'LeaderboardEntry',
+    LeaderboardSchema
+  )
+
+NOTE: One document per user (unique on userId). A new win only replaces the
+record if move_count < bestMoves (lower is better).
+
+--------------------------------------------------------------------------------
+STEP 5 — Leaderboard Service
+--------------------------------------------------------------------------------
+FILE: apps/web/src/models/leaderboard.service.ts  (CREATE NEW FILE)
+
+  import { LeaderboardEntry } from './leaderboard.model'
+
+  export async function upsertLeaderboard(
+    userId: string,
+    username: string,
+    moves: number,
+    gameId: string,
+    difficulty: 'easy' | 'medium' | 'hard',
+    ruleset: string,
+  ): Promise<void> {
+    const existing = await LeaderboardEntry.findOne({ userId })
+    if (!existing || moves < existing.bestMoves) {
+      await LeaderboardEntry.findOneAndUpdate(
+        { userId },
+        {
+          userId,
+          username,
+          bestMoves: moves,
+          gameId,
+          difficulty,
+          ruleset,
+          achievedAt: new Date(),
+          updatedAt: new Date(),
+        },
+        { upsert: true, new: true }
+      )
+    }
+  }
+
+  export async function getLeaderboard(limit = 20) {
+    return LeaderboardEntry.find()
+      .sort({ bestMoves: 1 })   // ascending — fewest moves first
+      .limit(limit)
+      .lean()
+  }
+
+--------------------------------------------------------------------------------
+STEP 6 — Server Route: Submit + Fetch Leaderboard
+--------------------------------------------------------------------------------
+FILE: apps/web/src/server/routes/leaderboard.ts  (CREATE NEW FILE)
+
+  import { Hono } from 'hono'
+  import { createClerkClient } from '@clerk/backend'
+  import { upsertLeaderboard, getLeaderboard } from '../../models/leaderboard.service'
+
+  const clerk = createClerkClient({ secretKey: process.env.CLERK_SECRET_KEY })
+  const leaderboardRouter = new Hono()
+
+  // GET /api/leaderboard — public, returns top 20
+  leaderboardRouter.get('/', async (c) => {
+    const entries = await getLeaderboard(20)
+    return c.json({ entries })
+  })
+
+  // POST /api/leaderboard — called after a PvA win, requires auth header
+  // Body: { gameId, moves, difficulty, ruleset }
+  leaderboardRouter.post('/', async (c) => {
+    const authHeader = c.req.header('Authorization')
+    if (!authHeader?.startsWith('Bearer ')) {
+      return c.json({ error: 'Unauthorized' }, 401)
+    }
+
+    const token = authHeader.slice(7)
+    let userId: string
+    let username: string
+
+    try {
+      const payload = await clerk.verifyToken(token)
+      userId = payload.sub
+      // Fetch full user for display name
+      const user = await clerk.users.getUser(userId)
+      username = user.username ??
+        `${user.firstName ?? ''} ${user.lastName ?? ''}`.trim() ||
+        user.emailAddresses[0]?.emailAddress ??
+        userId
+    } catch {
+      return c.json({ error: 'Invalid token' }, 401)
+    }
+
+    const body = await c.req.json()
+    const { gameId, moves, difficulty, ruleset } = body
+
+    if (!gameId || typeof moves !== 'number' || !difficulty || !ruleset) {
+      return c.json({ error: 'Invalid body' }, 400)
+    }
+
+    await upsertLeaderboard(userId, username, moves, gameId, difficulty, ruleset)
+    return c.json({ ok: true })
+  })
+
+  export default leaderboardRouter
+
+FILE: apps/web/src/server/app.ts  (MODIFY — add new route)
+
+  import leaderboardRouter from './routes/leaderboard'
+  // ...existing imports...
+
+  // Add after gameRouter is mounted:
+  app.route('/api/leaderboard', leaderboardRouter)
+
+--------------------------------------------------------------------------------
+STEP 7 — Client: Submit Score After PvA Win
+--------------------------------------------------------------------------------
+FILE: apps/web/src/routes/game.$gameId.end.tsx  (MODIFY)
+
+After determining the player won a PvA game, call the leaderboard API:
+
+  import { useAuth } from '@clerk/clerk-react'
+
+  // Inside the component, after determining win:
+  const { getToken, isSignedIn } = useAuth()
+
+  // In a useEffect or event handler, after confirming state.status ends with
+  // the PLAYER's team winning AND mode === 'pva':
+  useEffect(() => {
+    async function submitScore() {
+      if (!isSignedIn || !state) return
+      if (state.mode !== 'pva') return
+
+      // Determine if the human player won
+      const playerTeam = state.ai_team === 'red' ? 'black' : 'red'
+      if (state.status !== `${playerTeam}_wins`) return
+
+      const token = await getToken()
+      await fetch('/api/leaderboard', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          gameId: state.gameId,
+          moves: state.move_count,
+          difficulty: state.difficulty,
+          ruleset: state.ruleset.preset ?? 'custom',
+        }),
+      })
+    }
+    submitScore()
+  }, [state?.status])
+
+--------------------------------------------------------------------------------
+STEP 8 — Leaderboard UI on Homepage
+--------------------------------------------------------------------------------
+FILE: apps/web/src/routes/index.tsx  (MODIFY)
+
+Add a "Leaderboard" button next to "New Game" on the homepage that opens
+a modal showing the top 20 entries. Fetch from GET /api/leaderboard.
+
+  // State:
+  const [leaderboardOpen, setLeaderboardOpen] = useState(false)
+  const [leaderboardData, setLeaderboardData] = useState<any[]>([])
+
+  async function openLeaderboard() {
+    setLeaderboardOpen(true)
+    const res = await fetch('/api/leaderboard')
+    const json = await res.json()
+    setLeaderboardData(json.entries)
+  }
+
+  // Button (same style as "New Game"):
+  <button style={styles.button} onClick={openLeaderboard}>
+    Leaderboard
+  </button>
+
+  // Modal content — table with rank, username, bestMoves, difficulty, ruleset:
+  {leaderboardOpen && (
+    <div style={styles.overlay} onClick={() => setLeaderboardOpen(false)}>
+      <div style={{ ...styles.modal, minWidth: 360 }} onClick={e => e.stopPropagation()}>
+        <h2 style={styles.modalTitle}>🏆 Leaderboard</h2>
+        <p style={{ fontSize: '0.8rem', color: '#555', margin: 0 }}>
+          Fewest moves to beat AI (Player vs AI only)
+        </p>
+        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.85rem' }}>
+          <thead>
+            <tr style={{ borderBottom: '2px solid #000' }}>
+              <th style={{ textAlign: 'left', padding: '0.25rem' }}>#</th>
+              <th style={{ textAlign: 'left', padding: '0.25rem' }}>Player</th>
+              <th style={{ textAlign: 'right', padding: '0.25rem' }}>Moves</th>
+              <th style={{ textAlign: 'left', padding: '0.25rem' }}>Difficulty</th>
+            </tr>
+          </thead>
+          <tbody>
+            {leaderboardData.map((entry, i) => (
+              <tr key={entry._id} style={{ borderBottom: '1px solid #eee' }}>
+                <td style={{ padding: '0.25rem' }}>{i + 1}</td>
+                <td style={{ padding: '0.25rem' }}>{entry.username}</td>
+                <td style={{ textAlign: 'right', padding: '0.25rem', fontWeight: 'bold' }}>
+                  {entry.bestMoves}
+                </td>
+                <td style={{ padding: '0.25rem', textTransform: 'capitalize' }}>
+                  {entry.difficulty}
+                </td>
+              </tr>
+            ))}
+            {leaderboardData.length === 0 && (
+              <tr><td colSpan={4} style={{ padding: '1rem', textAlign: 'center', color: '#999' }}>
+                No scores yet. Be the first!
+              </td></tr>
+            )}
+          </tbody>
+        </table>
+        <button style={{ ...styles.startButton, marginTop: '1rem' }}
+          onClick={() => setLeaderboardOpen(false)}>
+          Close
+        </button>
+      </div>
+    </div>
+  )}
+
+--------------------------------------------------------------------------------
+ACCEPTANCE CRITERIA
+--------------------------------------------------------------------------------
+[ ] ClerkProvider wraps the entire app
+[ ] UserButton visible in top-right when signed in; Sign In button when signed out
+[ ] Sign in modal opens in-page (mode="modal"), not a redirect
+[ ] After signing in, token can be retrieved via useAuth().getToken()
+[ ] LeaderboardEntry MongoDB collection created with correct index
+[ ] GET /api/leaderboard returns top 20 sorted by bestMoves ascending
+[ ] POST /api/leaderboard verifies Clerk token; upserts only if new score < existing
+[ ] Winning a PvA game as a signed-in user auto-submits score
+[ ] Leaderboard modal on homepage shows rank, username, moves, difficulty
+[ ] Non-signed-in users can VIEW leaderboard but not submit scores
+================================================================================

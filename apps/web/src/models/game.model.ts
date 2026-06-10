@@ -75,6 +75,10 @@ const GameSchema = new Schema({
     required: true,
     default: []
   },
+  player_name: {
+    type: String,
+    required: false
+  },
   styleConfig: {
     type: Schema.Types.Mixed,
     required: true,
@@ -123,6 +127,7 @@ export interface IGame extends Document {
     timestamp: Date;
   }>;
   styleConfig: GameStyleConfig;
+  player_name?: string;
   created_at: Date;
   updated_at: Date;
 }

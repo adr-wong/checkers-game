@@ -51,10 +51,39 @@ export function AnimationOverlay({
 
   useEffect(() => {
     if (!animatingPiece) return
-    const from = getCellCenter(boardRef, animatingPiece.from[0], animatingPiece.from[1], boardSize)
-    const to = getCellCenter(boardRef, animatingPiece.to[0], animatingPiece.to[1], boardSize)
-    setFromPos(from)
-    setToPos(to)
+
+    let cancelled = false
+    let retries = 0
+    const maxRetries = 3
+
+    function measure() {
+      if (cancelled || !animatingPiece) return
+
+      const from = getCellCenter(boardRef, animatingPiece.from[0], animatingPiece.from[1], boardSize)
+      const to = getCellCenter(boardRef, animatingPiece.to[0], animatingPiece.to[1], boardSize)
+
+      if (from && to) {
+        const boardEl = boardRef.current
+        const parentEl = boardEl?.parentElement
+        if (boardEl && parentEl) {
+          const boardRect = boardEl.getBoundingClientRect()
+          const parentRect = parentEl.getBoundingClientRect()
+          const offsetX = boardRect.left - parentRect.left
+          const offsetY = boardRect.top - parentRect.top
+          setFromPos({ x: from.x + offsetX, y: from.y + offsetY })
+          setToPos({ x: to.x + offsetX, y: to.y + offsetY })
+        } else {
+          setFromPos(from)
+          setToPos(to)
+        }
+      } else if (retries < maxRetries) {
+        retries++
+        requestAnimationFrame(measure)
+      }
+    }
+
+    requestAnimationFrame(measure)
+    return () => { cancelled = true }
   }, [animatingPiece, boardRef, boardSize])
 
   if (!animatingPiece || !fromPos || !toPos) return null

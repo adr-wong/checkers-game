@@ -18,8 +18,8 @@ interface MoveLogProps {
 
 const styles = {
   container: {
-    width: "100%",
-    maxHeight: "200px",
+    flex: 1,
+    minHeight: 0,
     overflowY: "auto" as const,
     border: "2px solid #000",
     padding: "0.5rem",

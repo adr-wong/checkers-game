@@ -29,7 +29,7 @@
  */
 
 import type { Cell, Team, Move, RuleSet } from "@checkers/shared";
-import { getLegalMoves, applyMove } from "@checkers/shared";
+import { getLegalMoves, applyMove, tt, hashBoard } from "@checkers/shared";
 import type { Difficulty } from "../types";
 import { evaluate } from "./eval";
 import { applyNoise } from "./noise";
@@ -91,19 +91,6 @@ export function minimaxSearch(
   return bestMove;
 }
 
-/**
- * Internal recursive negamax function.
- * Not exported. Called only by minimaxSearch.
- *
- * @param board       Current board state
- * @param ruleset     Active ruleset
- * @param team        The team whose turn it is at this node
- * @param depth       Remaining depth to search
- * @param alpha       Alpha bound (best score the maximizing player can guarantee)
- * @param beta        Beta bound (best score the minimizing player can guarantee)
- * @param difficulty  Used to apply noise at leaf nodes
- * @returns           Score from the perspective of the team parameter
- */
 function negamax(
   board: Cell[][],
   ruleset: RuleSet,
@@ -113,37 +100,40 @@ function negamax(
   beta: number,
   difficulty: Difficulty
 ): number {
+  const hash = hashBoard(board, team);
+  const cached = tt.get(hash, depth);
+  if (cached) {
+    if (cached.bound === 0) return cached.score;           // exact
+    if (cached.bound === 1 && cached.score >= beta) return cached.score;  // lower bound → cutoff
+    if (cached.bound === 2 && cached.score <= alpha) return cached.score; // upper bound → prune
+  }
+
   const legalMoves = getLegalMoves(board, ruleset, team);
+  if (legalMoves.length === 0) return -10000;
 
-  // Terminal state: no legal moves
-  if (legalMoves.length === 0) {
-    return -10000; // Losing position for the current team
-  }
-
-  // Leaf node: evaluate position
   if (depth === 0) {
-    const rawScore = evaluate(board, team, ruleset);
-    return applyNoise(rawScore, difficulty);
+    const score = applyNoise(evaluate(board, team, ruleset), difficulty);
+    tt.set({ hash, score, depth: 1, bound: 0 });
+    return score;
   }
 
-  // Order moves for better pruning
   const orderedMoves = orderMoves(board, legalMoves, ruleset, team);
-
   const opponent = team === "red" ? "black" : "red";
+  let bestMove: Move | undefined;
+  const origAlpha = alpha;
 
   for (const move of orderedMoves) {
     const newBoard = applyMove(board, move, ruleset);
     const score = -negamax(newBoard, ruleset, opponent, depth - 1, -beta, -alpha, difficulty);
 
-    if (score >= beta) {
-      return beta; // Beta cutoff
-    }
-
-    if (score > alpha) {
-      alpha = score;
+    if (score > alpha) { alpha = score; bestMove = move; }
+    if (alpha >= beta) {
+      tt.set({ hash, score: beta, depth, bound: 1, bestMove });
+      return beta;
     }
   }
 
+  tt.set({ hash, score: alpha, depth, bound: alpha > origAlpha ? 0 : 2, bestMove });
   return alpha;
 }
 
