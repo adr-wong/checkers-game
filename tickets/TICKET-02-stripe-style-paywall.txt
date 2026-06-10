@@ -1,0 +1,416 @@
+================================================================================
+TICKET-02 — Stripe Paywall for Piece Styles ($2 each)
+================================================================================
+Priority: High
+Scope: apps/web (frontend + server) + MongoDB
+Dependencies: stripe (npm), @clerk/backend (from TICKET-01)
+
+REQUIRES TICKET-01 COMPLETED FIRST (Clerk auth must exist for user identity)
+
+--------------------------------------------------------------------------------
+OVERVIEW
+--------------------------------------------------------------------------------
+Lock premium piece styles behind a $2 one-time Stripe Checkout purchase.
+The "classic" style remains free. All other styles (bottlecaps, crystal,
+heraldic, hexagonal, marble, minimalist) require purchase.
+
+Flow:
+1. User clicks a locked style in StylePicker.
+2. A "Buy for $2" button navigates them to a Stripe Checkout session (new page).
+3. Stripe redirects back on success with a session_id in the URL.
+4. The server verifies the session and saves the purchase to MongoDB.
+5. The user can now use that style.
+
+Purchase records are stored in a new MongoDB `purchases` collection.
+
+--------------------------------------------------------------------------------
+STEP 1 — Install Stripe
+--------------------------------------------------------------------------------
+In apps/web:
+
+  bun add stripe
+
+In apps/web/.env:
+
+  STRIPE_SECRET_KEY=sk_live_XXXXXXXX
+  STRIPE_WEBHOOK_SECRET=whsec_XXXXXXXX
+  VITE_STRIPE_PUBLISHABLE_KEY=pk_live_XXXXXXXX
+
+--------------------------------------------------------------------------------
+STEP 2 — Define Which Styles Are Premium
+--------------------------------------------------------------------------------
+FILE: apps/web/src/styles/index.ts  (MODIFY or create if only exporting registry)
+
+Add and export a set of premium style IDs:
+
+  export const FREE_STYLE_IDS = new Set(['classic'])
+
+  export const PREMIUM_STYLES: Record<string, { name: string; priceUsd: number }> = {
+    bottlecaps:  { name: 'Bottle Caps',  priceUsd: 2 },
+    crystal:     { name: 'Crystal',      priceUsd: 2 },
+    heraldic:    { name: 'Heraldic',     priceUsd: 2 },
+    hexagonal:   { name: 'Hexagonal',    priceUsd: 2 },
+    marble:      { name: 'Marble',       priceUsd: 2 },
+    minimalist:  { name: 'Minimalist',   priceUsd: 2 },
+  }
+
+--------------------------------------------------------------------------------
+STEP 3 — MongoDB Purchase Model
+--------------------------------------------------------------------------------
+FILE: apps/web/src/models/purchase.model.ts  (CREATE NEW FILE)
+
+  import mongoose, { Schema, Document } from 'mongoose'
+
+  export interface IPurchase extends Document {
+    userId: string           // Clerk user ID
+    styleId: string          // e.g. "bottlecaps"
+    stripeSessionId: string  // Stripe checkout session ID (for idempotency)
+    amountCents: number      // 200 = $2.00
+    purchasedAt: Date
+  }
+
+  const PurchaseSchema = new Schema({
+    userId:          { type: String, required: true },
+    styleId:         { type: String, required: true },
+    stripeSessionId: { type: String, required: true, unique: true },
+    amountCents:     { type: Number, required: true },
+    purchasedAt:     { type: Date,   required: true, default: Date.now },
+  })
+
+  // Compound index: fast lookup of "does userId own styleId?"
+  PurchaseSchema.index({ userId: 1, styleId: 1 })
+
+  export const Purchase = mongoose.model<IPurchase>('Purchase', PurchaseSchema)
+
+--------------------------------------------------------------------------------
+STEP 4 — Purchase Service
+--------------------------------------------------------------------------------
+FILE: apps/web/src/models/purchase.service.ts  (CREATE NEW FILE)
+
+  import { Purchase } from './purchase.model'
+
+  /** Returns all styleIds the user has purchased. */
+  export async function getPurchasedStyles(userId: string): Promise<string[]> {
+    const records = await Purchase.find({ userId }, { styleId: 1 }).lean()
+    return records.map(r => r.styleId)
+  }
+
+  /** Returns true if the user owns the given styleId. */
+  export async function userOwnsStyle(userId: string, styleId: string): Promise<boolean> {
+    const exists = await Purchase.exists({ userId, styleId })
+    return !!exists
+  }
+
+  /** Saves a confirmed Stripe purchase. Idempotent (unique on stripeSessionId). */
+  export async function recordPurchase(
+    userId: string,
+    styleId: string,
+    stripeSessionId: string,
+    amountCents: number,
+  ): Promise<void> {
+    await Purchase.findOneAndUpdate(
+      { stripeSessionId },
+      { userId, styleId, stripeSessionId, amountCents, purchasedAt: new Date() },
+      { upsert: true }
+    )
+  }
+
+--------------------------------------------------------------------------------
+STEP 5 — Server Routes: Checkout + Confirm + Owned Styles
+--------------------------------------------------------------------------------
+FILE: apps/web/src/server/routes/shop.ts  (CREATE NEW FILE)
+
+  import { Hono } from 'hono'
+  import Stripe from 'stripe'
+  import { createClerkClient } from '@clerk/backend'
+  import { recordPurchase, getPurchasedStyles } from '../../models/purchase.service'
+  import { PREMIUM_STYLES } from '../../styles/index'
+
+  const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, { apiVersion: '2024-06-20' })
+  const clerk = createClerkClient({ secretKey: process.env.CLERK_SECRET_KEY! })
+  const shopRouter = new Hono()
+
+  // Middleware: extract and verify Clerk token, attach userId to context
+  async function requireAuth(c: any, next: any) {
+    const token = c.req.header('Authorization')?.slice(7)
+    if (!token) return c.json({ error: 'Unauthorized' }, 401)
+    try {
+      const payload = await clerk.verifyToken(token)
+      c.set('userId', payload.sub)
+      await next()
+    } catch {
+      return c.json({ error: 'Invalid token' }, 401)
+    }
+  }
+
+  // GET /api/shop/owned — returns list of styleIds the signed-in user owns
+  shopRouter.get('/owned', requireAuth, async (c) => {
+    const userId = c.get('userId') as string
+    const owned = await getPurchasedStyles(userId)
+    return c.json({ owned: ['classic', ...owned] })  // classic is always free
+  })
+
+  // POST /api/shop/checkout — creates a Stripe Checkout session for one style
+  // Body: { styleId: string }
+  // Returns: { checkoutUrl: string }
+  shopRouter.post('/checkout', requireAuth, async (c) => {
+    const userId = c.get('userId') as string
+    const { styleId } = await c.req.json()
+
+    const styleMeta = PREMIUM_STYLES[styleId]
+    if (!styleMeta) return c.json({ error: 'Unknown style' }, 400)
+
+    const session = await stripe.checkout.sessions.create({
+      payment_method_types: ['card'],
+      line_items: [{
+        price_data: {
+          currency: 'usd',
+          product_data: {
+            name: `Checkers — ${styleMeta.name} Piece Style`,
+            description: 'One-time unlock. Applies to all future games.',
+          },
+          unit_amount: styleMeta.priceUsd * 100,  // cents
+        },
+        quantity: 1,
+      }],
+      mode: 'payment',
+      // After payment, redirect back to the homepage with session_id
+      success_url: `${process.env.APP_URL ?? 'http://localhost:3001'}/?style_purchased=true&session_id={CHECKOUT_SESSION_ID}`,
+      cancel_url:  `${process.env.APP_URL ?? 'http://localhost:3001'}/`,
+      metadata: {
+        userId,
+        styleId,
+      },
+    })
+
+    return c.json({ checkoutUrl: session.url })
+  })
+
+  // POST /api/shop/confirm — called client-side after redirect back, verifies session
+  // Body: { sessionId: string }
+  shopRouter.post('/confirm', requireAuth, async (c) => {
+    const userId = c.get('userId') as string
+    const { sessionId } = await c.req.json()
+
+    const session = await stripe.checkout.sessions.retrieve(sessionId)
+
+    if (session.payment_status !== 'paid') {
+      return c.json({ error: 'Payment not completed' }, 400)
+    }
+
+    if (session.metadata?.userId !== userId) {
+      return c.json({ error: 'Session user mismatch' }, 403)
+    }
+
+    const styleId = session.metadata?.styleId
+    if (!styleId) return c.json({ error: 'Missing styleId in session' }, 400)
+
+    await recordPurchase(userId, styleId, sessionId, session.amount_total ?? 200)
+
+    return c.json({ ok: true, styleId })
+  })
+
+  export default shopRouter
+
+FILE: apps/web/src/server/app.ts  (MODIFY — mount shop router)
+
+  import shopRouter from './routes/shop'
+  // After existing route mounts:
+  app.route('/api/shop', shopRouter)
+
+NOTE on APP_URL: Add VITE_APP_URL / APP_URL to .env pointing to your deployed
+domain in production. In development, http://localhost:3001 is the default.
+
+--------------------------------------------------------------------------------
+STEP 6 — Client: Handle Stripe Return URL
+--------------------------------------------------------------------------------
+FILE: apps/web/src/routes/index.tsx  (MODIFY)
+
+On mount, check if URL has `?style_purchased=true&session_id=XXX`.
+If so, call /api/shop/confirm to record the purchase, then refresh owned styles.
+
+  import { useAuth } from '@clerk/clerk-react'
+  import { useEffect, useState } from 'react'
+
+  // In HomeComponent:
+  const { getToken, isSignedIn } = useAuth()
+  const [ownedStyles, setOwnedStyles] = useState<string[]>(['classic'])
+
+  // Fetch owned styles when signed in
+  useEffect(() => {
+    async function fetchOwned() {
+      if (!isSignedIn) { setOwnedStyles(['classic']); return }
+      const token = await getToken()
+      const res = await fetch('/api/shop/owned', {
+        headers: { Authorization: `Bearer ${token}` }
+      })
+      const json = await res.json()
+      setOwnedStyles(json.owned ?? ['classic'])
+    }
+    fetchOwned()
+  }, [isSignedIn])
+
+  // On mount, handle Stripe success redirect
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search)
+    const sessionId = params.get('session_id')
+    if (!sessionId || !params.get('style_purchased')) return
+
+    async function confirmPurchase() {
+      if (!isSignedIn) return
+      const token = await getToken()
+      const res = await fetch('/api/shop/confirm', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ sessionId }),
+      })
+      if (res.ok) {
+        // Refresh owned styles and clear query params
+        const json = await res.json()
+        setOwnedStyles(prev => [...new Set([...prev, json.styleId])])
+        window.history.replaceState({}, '', '/')
+      }
+    }
+    confirmPurchase()
+  }, [isSignedIn])
+
+Pass ownedStyles down to StylePicker:
+  <StylePicker
+    selectedStyleId={pieceStyleId}
+    onSelect={setPieceStyleId}
+    ownedStyleIds={ownedStyles}
+    onPurchase={async (styleId) => {
+      if (!isSignedIn) { alert('Sign in to purchase styles.'); return }
+      const token = await getToken()
+      const res = await fetch('/api/shop/checkout', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ styleId }),
+      })
+      const json = await res.json()
+      if (json.checkoutUrl) {
+        window.location.href = json.checkoutUrl   // Navigate to Stripe Checkout
+      }
+    }}
+  />
+
+--------------------------------------------------------------------------------
+STEP 7 — Update StylePicker Component
+--------------------------------------------------------------------------------
+FILE: apps/web/src/components/StylePicker.tsx  (MODIFY)
+
+Add ownedStyleIds and onPurchase props. Show a lock icon and "Buy $2" button
+on styles the user doesn't own. Prevent selecting locked styles.
+
+  interface StylePickerProps {
+    selectedStyleId: string
+    onSelect: (id: string) => void
+    ownedStyleIds?: string[]          // defaults to ['classic']
+    onPurchase?: (styleId: string) => void
+  }
+
+  // In the rendered list, for each style:
+  const isOwned = (ownedStyleIds ?? ['classic']).includes(style.id)
+  const isLocked = !isOwned
+
+  // Wrap each style entry in a relative container:
+  // - If locked: show a 🔒 badge, grey out the preview, disable click-to-select
+  // - Show a "Buy $2" button that calls onPurchase(style.id)
+
+  // Example markup for each style card:
+  <div
+    key={style.id}
+    style={{
+      border: selectedStyleId === style.id && isOwned ? '2px solid #000' : '1px solid #ccc',
+      padding: '0.5rem',
+      cursor: isOwned ? 'pointer' : 'default',
+      opacity: isLocked ? 0.6 : 1,
+      position: 'relative',
+    }}
+    onClick={() => isOwned && onSelect(style.id)}
+  >
+    {/* existing preview content */}
+    <span>{style.name}</span>
+
+    {isLocked && (
+      <div style={{ marginTop: '0.25rem' }}>
+        <button
+          onClick={(e) => { e.stopPropagation(); onPurchase?.(style.id) }}
+          style={{
+            backgroundColor: '#000',
+            color: '#fff',
+            border: 'none',
+            padding: '0.25rem 0.75rem',
+            fontSize: '0.8rem',
+            cursor: 'pointer',
+          }}
+        >
+          🔒 Buy $2
+        </button>
+      </div>
+    )}
+  </div>
+
+--------------------------------------------------------------------------------
+STEP 8 — Guard Style Selection in Game
+--------------------------------------------------------------------------------
+When a game is created, the server should verify the selected pieceStyleId is
+either free or owned by the requesting user. Add this check to the game
+creation endpoint in apps/web/src/server/routes/game.ts:
+
+  // In POST / (create game):
+  // If styleConfig.pieceStyleId is not 'classic', verify ownership
+  import { userOwnsStyle } from '../../models/purchase.service'
+  import { FREE_STYLE_IDS } from '../../styles/index'
+
+  // After parsing styleConfig:
+  if (styleConfig && !FREE_STYLE_IDS.has(styleConfig.pieceStyleId)) {
+    const authHeader = c.req.header('Authorization')
+    const token = authHeader?.slice(7)
+    if (token) {
+      try {
+        const payload = await clerk.verifyToken(token)
+        const owns = await userOwnsStyle(payload.sub, styleConfig.pieceStyleId)
+        if (!owns) {
+          // Silently fall back to classic rather than rejecting the game
+          styleConfig.pieceStyleId = 'classic'
+        }
+      } catch {
+        styleConfig.pieceStyleId = 'classic'
+      }
+    } else {
+      styleConfig.pieceStyleId = 'classic'
+    }
+  }
+
+--------------------------------------------------------------------------------
+ENVIRONMENT VARIABLES SUMMARY
+--------------------------------------------------------------------------------
+Add to apps/web/.env:
+
+  VITE_CLERK_PUBLISHABLE_KEY=pk_live_...
+  CLERK_SECRET_KEY=sk_live_...
+  STRIPE_SECRET_KEY=sk_live_...
+  STRIPE_WEBHOOK_SECRET=whsec_...    (optional, for webhook-based confirmation)
+  APP_URL=https://yourdomain.com     (or http://localhost:3001 in dev)
+
+--------------------------------------------------------------------------------
+ACCEPTANCE CRITERIA
+--------------------------------------------------------------------------------
+[ ] "classic" style always free and selectable without sign-in
+[ ] All other styles show a 🔒 badge and "Buy $2" button when unowned
+[ ] Clicking "Buy $2" creates a Stripe Checkout session and redirects there
+[ ] After successful payment, Stripe redirects back to /
+[ ] /api/shop/confirm verifies the session and records the purchase in MongoDB
+[ ] After confirm, the style is unlocked without page reload
+[ ] GET /api/shop/owned returns correct style list for signed-in user
+[ ] Creating a game with an unowned premium style silently falls back to classic
+[ ] Purchases survive server restarts (stored in MongoDB, not memory)
+[ ] Stripe session is idempotent (duplicate session_ids don't create duplicate records)
+================================================================================

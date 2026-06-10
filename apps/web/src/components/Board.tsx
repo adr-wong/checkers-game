@@ -18,6 +18,7 @@ interface BoardProps {
   disabled?: boolean
   boardRef?: React.RefObject<HTMLDivElement | null>
   animatingFrom?: [number, number] | null
+  animationOrigin?: [number, number] | null
   capturedPositions?: Array<[number, number]>
   pieceStyleId?: string
 }
@@ -32,6 +33,7 @@ export function Board({
   disabled,
   boardRef,
   animatingFrom,
+  animationOrigin,
   capturedPositions,
   pieceStyleId = 'classic',
 }: BoardProps) {
@@ -64,7 +66,7 @@ export function Board({
           const legal = isLegalMove(rowIdx, colIdx)
           const last = isLastMoveCell(rowIdx, colIdx)
           const isAnimatingFromCell =
-            animatingFrom?.[0] === rowIdx && animatingFrom?.[1] === colIdx
+            animationOrigin?.[0] === rowIdx && animationOrigin?.[1] === colIdx
           const isCapturedCell =
             capturedPositions?.some(([r, c]) => r === rowIdx && c === colIdx) ?? false
 

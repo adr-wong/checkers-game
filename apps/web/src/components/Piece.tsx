@@ -16,7 +16,7 @@ interface VariantProps {
   styleId?: string
 }
 
-export function Piece({ color, type, size = 40, styleId = 'classic' }: PieceProps) {
+export function Piece({ color, type, size = 80, styleId = 'classic' }: PieceProps) {
   const style = registry.get(styleId)
   const Component = type === 'king' ? style.Crowned : style.Normal
   return <Component team={color} size={size} />

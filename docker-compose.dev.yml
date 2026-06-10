@@ -57,16 +57,20 @@ services:
     ports:
       - "3000:3000"
 
-  frontend:
+  frontend-dev:
     build:
       context: .
-      dockerfile: apps/web/Dockerfile.frontend
+      dockerfile: apps/web/Dockerfile.dev
       args:
         VITE_CLERK_PUBLISHABLE_KEY: ${VITE_CLERK_PUBLISHABLE_KEY:-}
     ports:
       - "3001:3001"
     environment:
-      - API_URL=http://localhost:3000
+      - API_URL=http://api:3000
+      - VITE_CLERK_PUBLISHABLE_KEY=${VITE_CLERK_PUBLISHABLE_KEY:-}
+    volumes:
+      - ./apps/web/src:/app/apps/web/src
+      - ./packages/shared:/app/packages/shared
     depends_on:
       - api
     networks:

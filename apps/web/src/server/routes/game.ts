@@ -5,6 +5,9 @@ import { createGame, getGameById, addMoveToHistory, updateGame } from '../../mod
 import { triggerAiTurn, AiServiceError } from '../../services/ai.client'
 import { type RuleSet, type Move, type GameStatus, type GameStyleConfig, DEFAULT_STYLE_CONFIG, PRESET_RULESETS } from '@checkers/shared'
 import { getLegalMoves, applyMove, isGameOver, parseBoardString, serializeBoardString } from '@checkers/shared'
+import { FREE_STYLE_IDS } from '../../styles/index'
+import { isStripeEnabled } from '../../lib/stripe'
+import { userOwnsStyle } from '../../models/purchase.service'
 
 function isValidGameId(gameId: string): boolean {
   return mongoose.Types.ObjectId.isValid(gameId)
@@ -30,6 +33,7 @@ type GameStateResponse = {
     timestamp: Date
   }>
   styleConfig: GameStyleConfig
+  player_name?: string
 }
 
 type MoveResponse = {
@@ -59,6 +63,7 @@ function buildGameStateResponse(game: {
     timestamp: Date
   }>
   styleConfig: GameStyleConfig
+  player_name?: string
 }): GameStateResponse {
   return {
     gameId: typeof game._id === 'string' ? game._id : game._id.toString(),
@@ -74,7 +79,8 @@ function buildGameStateResponse(game: {
     history: game.history.map(({ from, to, captures, promotion, timestamp }) => ({
       from, to, captures, promotion, timestamp
     })),
-    styleConfig: game.styleConfig
+    styleConfig: game.styleConfig,
+    player_name: game.player_name
   }
 }
 
@@ -90,6 +96,7 @@ async function maybeTriggerNextAiMove(game: {
   status: string
   move_count: number
   turn: 'red' | 'black'
+  ai_team?: 'red' | 'black'
   difficulty?: 'easy' | 'medium' | 'hard'
   algorithm?: 'minimax' | 'astar'
   board: string
@@ -97,7 +104,9 @@ async function maybeTriggerNextAiMove(game: {
 }) {
   const gameId = typeof game._id === 'string' ? game._id : game._id.toString()
 
-  if (game.mode !== 'ava' || game.status !== 'active' || game.move_count === 0) {
+  const isAITurn = game.mode === 'ava' ||
+    (game.mode === 'pva' && game.ai_team === game.turn)
+  if (!isAITurn || game.status !== 'active' || game.move_count === 0) {
     return
   }
 
@@ -166,7 +175,8 @@ const createGameSchema = z.object({
   styleConfig: z.object({
     pieceStyleId: z.string(),
     boardStyleId: z.string()
-  }).optional()
+  }).optional(),
+  player_name: z.string().optional()
 })
 
 const moveSchema = z.object({
@@ -191,7 +201,7 @@ gameRouter.post('/', async (c) => {
       return c.json({ error: 'Invalid request body', details: validation.error.errors }, 400)
     }
     
-    const { ruleset, mode, difficulty, ai_team, algorithm, styleConfig } = validation.data
+    const { ruleset, mode, difficulty, ai_team, algorithm, styleConfig, player_name } = validation.data
 
     // Convert preset to full ruleset if needed
     let fullRuleset: RuleSet
@@ -201,10 +211,32 @@ gameRouter.post('/', async (c) => {
       fullRuleset = ruleset
     }
 
-    const game = await createGame(fullRuleset, mode, difficulty, ai_team, algorithm, styleConfig ?? DEFAULT_STYLE_CONFIG)
+    // Verify style ownership — fall back to classic if unowned
+    let finalStyleConfig = styleConfig ?? DEFAULT_STYLE_CONFIG
+    if (isStripeEnabled && finalStyleConfig.pieceStyleId && !FREE_STYLE_IDS.has(finalStyleConfig.pieceStyleId)) {
+      const authHeader = c.req.header('Authorization')
+      const token = authHeader?.startsWith('Bearer ') ? authHeader.slice(7) : null
+      if (token) {
+        try {
+          const { verifyToken } = await import('@clerk/backend')
+          const payload = await verifyToken(token, { secretKey: process.env.CLERK_SECRET_KEY })
+          const owns = await userOwnsStyle(payload.sub, finalStyleConfig.pieceStyleId)
+          if (!owns) {
+            finalStyleConfig = { ...finalStyleConfig, pieceStyleId: 'classic' }
+          }
+        } catch {
+          finalStyleConfig = { ...finalStyleConfig, pieceStyleId: 'classic' }
+        }
+      } else {
+        finalStyleConfig = { ...finalStyleConfig, pieceStyleId: 'classic' }
+      }
+    }
 
-    // For ava mode, trigger the first AI move for red team (red always moves first)
-    if (mode === 'ava') {
+    const game = await createGame(fullRuleset, mode, difficulty, ai_team, algorithm, finalStyleConfig, player_name)
+
+    // Trigger the first AI move for red team when AI goes first (red always moves first)
+    const aiGoesFirst = (mode === 'ava') || (mode === 'pva' && ai_team === 'red')
+    if (aiGoesFirst) {
       try {
         await triggerAiTurn(
           game._id.toString(),

@@ -10,7 +10,8 @@ export async function createGame(
   difficulty?: 'easy' | 'medium' | 'hard',
   ai_team?: 'red' | 'black',
   algorithm?: 'minimax' | 'astar',
-  styleConfig?: GameStyleConfig
+  styleConfig?: GameStyleConfig,
+  playerName?: string
 ): Promise<IGame> {
   // Validate ruleset
   const rulesetErrors = validateRuleSet(ruleset);
@@ -39,6 +40,7 @@ export async function createGame(
     status: 'active',
     move_count: 0,
     history: [],
+    player_name: playerName,
     styleConfig: styleConfig ?? DEFAULT_STYLE_CONFIG
   });
 

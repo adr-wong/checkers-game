@@ -2,10 +2,54 @@ import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import type { CSSProperties } from "react";
 import { getGameState, createGame, type GameState, type CreateGameRequest } from "~/lib/api";
+import { useAuth } from "@clerk/clerk-react";
+import { isClerkEnabled } from "~/lib/clerk";
+import { GameBanner } from "~/components/GameBanner";
 
 export const Route = createFileRoute("/game/$gameId/end")({
   component: GameEndComponent,
 });
+
+function ScoreSubmitter({ state }: { state: GameState }) {
+  const { getToken, isSignedIn } = useAuth();
+
+  useEffect(() => {
+    async function submitScore() {
+      if (!isSignedIn) return;
+      if (state.mode !== 'pva') return;
+
+      const playerTeam = state.ai_team === 'red' ? 'black' : 'red';
+      if (state.status !== `${playerTeam}_wins`) return;
+
+      try {
+        const token = await getToken();
+        if (!token) return;
+
+        await fetch('/api/leaderboard', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${token}`,
+          },
+          body: JSON.stringify({
+            gameId: state.gameId,
+            moves: state.move_count,
+            difficulty: state.difficulty,
+            ruleset: state.ruleset.name,
+            player_team: state.ai_team === 'red' ? 'black' : 'red',
+            algorithm: state.algorithm,
+            player_name: state.player_name,
+          }),
+        });
+      } catch (e) {
+        console.error('Failed to submit leaderboard score:', e);
+      }
+    }
+    submitScore();
+  }, [state.status, isSignedIn, getToken, state]);
+
+  return null;
+}
 
 function GameEndComponent() {
   const { gameId } = Route.useParams();
@@ -22,8 +66,8 @@ function GameEndComponent() {
       .finally(() => setLoading(false));
   }, [gameId]);
 
-  if (loading) return <div style={styles.container}>Loading...</div>;
-  if (error || !state) return <div style={styles.container}>Error: {error ?? "Game not found"}</div>;
+  if (loading) return <div style={{ ...styles.page, alignItems: "center", justifyContent: "center" }}>Loading...</div>;
+  if (error || !state) return <div style={{ ...styles.page, alignItems: "center", justifyContent: "center" }}>Error: {error ?? "Game not found"}</div>;
 
   const redPieces = (state.board.match(/[rR]/g) ?? []).length;
   const blackPieces = (state.board.match(/[bB]/g) ?? []).length;
@@ -53,48 +97,57 @@ function GameEndComponent() {
   };
 
   return (
-    <div style={styles.container}>
-      <h1 style={styles.title}>Game Over</h1>
+    <div style={styles.page}>
+      {isClerkEnabled && state && <ScoreSubmitter state={state} />}
+      <GameBanner status={state.status as "red_wins" | "black_wins" | "draw"} />
+      <div style={styles.content}>
+        <h1 style={styles.title}>Game Over</h1>
 
-      <div style={styles.card}>
-        <div style={styles.result}>{resultText}</div>
+        <div style={styles.card}>
+          <div style={styles.result}>{resultText}</div>
 
-        <div style={styles.stats}>
-          <div style={styles.statRow}>
-            <span>Moves played</span>
-            <span>{state.move_count}</span>
-          </div>
-          <div style={styles.statRow}>
-            <span>Red pieces</span>
-            <span>{redPieces}</span>
-          </div>
-          <div style={styles.statRow}>
-            <span>Black pieces</span>
-            <span>{blackPieces}</span>
+          <div style={styles.stats}>
+            <div style={styles.statRow}>
+              <span>Moves played</span>
+              <span>{state.move_count}</span>
+            </div>
+            <div style={styles.statRow}>
+              <span>Red pieces</span>
+              <span>{redPieces}</span>
+            </div>
+            <div style={styles.statRow}>
+              <span>Black pieces</span>
+              <span>{blackPieces}</span>
+            </div>
           </div>
         </div>
-      </div>
 
-      <div style={styles.buttons}>
-        <button style={styles.btn} onClick={handlePlayAgain} disabled={playAgainLoading}>
-          {playAgainLoading ? "Creating..." : "Play Again"}
-        </button>
-        <button style={styles.btn} onClick={() => navigate({ to: "/" })}>
-          Home
-        </button>
+        <div style={styles.buttons}>
+          <button style={styles.btn} onClick={handlePlayAgain} disabled={playAgainLoading}>
+            {playAgainLoading ? "Creating..." : "Play Again"}
+          </button>
+          <button style={styles.btn} onClick={() => navigate({ to: "/" })}>
+            Home
+          </button>
+        </div>
       </div>
     </div>
   );
 }
 
 const styles: Record<string, CSSProperties> = {
-  container: {
-    maxWidth: 480,
-    margin: "80px auto",
-    padding: "0 24px",
+  page: {
+    minHeight: "100vh",
+    display: "flex",
     fontFamily: "system-ui, sans-serif",
     background: "#fff",
     color: "#000",
+  },
+  content: {
+    flex: 1,
+    maxWidth: 480,
+    margin: "80px auto",
+    padding: "0 24px",
   },
   title: {
     fontSize: 28,
